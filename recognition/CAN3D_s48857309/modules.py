@@ -59,5 +59,26 @@ class CAN3D(nn.Module):
         x = self.uplayer2(x)
         x = torch.cat((x, u), dim=1)
         x = self.segmentationlayer(x)
-        return x
+        return nn.functional.softmax(x, dim=1)
 
+def compute_dsfl(y_probs, y_true, smooth = 1e-6, weights=[], alphas=[], gamma=2):
+    """Dice squared focal loss, as described in the (W. Dai, 2021) paper.
+    
+    TODO: add weights (dsl) and alpha (fl) weights
+    """
+    y_probs = y_probs.view(y_probs.shape[0], y_probs.shape[1], -1)
+    y_true = y_true.view(y_true.shape[0], y_true.shape[1], -1)
+
+    voxel_count = y_probs.shape[2] * y_probs.shape[3] * y_probs[4]
+    difference = y_probs - y_true
+    phi = torch.sum(difference * difference, dim=-1)
+    denominator = torch.sum(y_probs * y_probs + y_true * y_true, dim=-1)
+
+    dsl_per_class = phi / denominator + phi / voxel_count
+    fl_per_class = -torch.sum(torch.pow(1.0 - y_probs, gamma) * torch.log(y_probs), dim=-1) / voxel_count
+    dsfl = torch.mean(dsl_per_class) + torch.mean(fl_per_class) # TODO: add weighting here
+    return dsfl
+
+def compute_loss(predictions, labels):
+    labels = nn.functional.one_hot(labels, predictions.shape[1]).permute(0, 4, 1, 2, 3)
+    return compute_dsfl(predictions, labels)
