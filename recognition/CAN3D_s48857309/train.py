@@ -5,14 +5,15 @@ import time
 
 from torch.utils.data import DataLoader
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
 # Hyper Parameters
 batch_size = 1 # since cant store large memory amount
-learning_rate = 0.01
-num_epochs = 5
+learning_rate = 0.001
+num_epochs = 10
 
 # Create Database
-database = HipMRI3D(early_stop=True)
+database = HipMRI3D(early_stop=10)
 train_set, test_set = get_training_test_split(database)
 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
