@@ -12,22 +12,10 @@ from pathlib import Path
 from sklearn.model_selection import GroupShuffleSplit
 
 
-
-def to_channels(arr: np.ndarray, dtype=np.uint8) -> np.ndarray:
-    channels = np.unique(arr)
-    res = np.zeros(arr.shape + (len(channels),), dtype=dtype)
-    for c in channels:
-        c = int(c)
-        res[..., c : c + 1][arr == c] = 1
-
-    return res
-
-
 # load medical image functions
 def load_data_3D(
     imageNames,
     normImage=False,
-    categorical=False,
     dtype=np.float32,
     early_stop=False,
 ):
@@ -51,18 +39,12 @@ def load_data_3D(
     first_case = niftiImage.get_fdata(caching="unchanged")
     if len(first_case.shape) == 4:
         first_case = first_case[:, :, :, 0]  # sometimes extra dims , remove
-    if categorical:
-        first_case = to_channels(first_case, dtype=dtype)
-        rows, cols, depth, channels = first_case.shape
-        images = np.zeros((num, rows, cols, depth, channels), dtype=dtype)
-    else:
-        rows, cols, depth = first_case.shape
-        images = np.zeros((num, rows, cols, depth), dtype=dtype)
+    rows, cols, depth = first_case.shape
+    images = np.zeros((num, rows, cols, depth), dtype=dtype)
 
     for i, inName in enumerate(tqdm(imageNames)):
         niftiImage = nib.load(inName)
         inImage = niftiImage.get_fdata(caching="unchanged")  # read disk only
-        affine = niftiImage.affine
 
         if len(inImage.shape) == 4:
             inImage = inImage[:, :, :, 0]  # sometimes extra dims in HipMRI_study data
@@ -71,17 +53,11 @@ def load_data_3D(
 
         if normImage:
             inImage = (inImage - inImage.mean()) / (inImage.std() + 1e-8)
-        if categorical:
-            inImage = to_channels(inImage, dtype=dtype)
-            images[i, : inImage.shape[0], : inImage.shape[1], : inImage.shape[2], :] = (
-                inImage
-            )
-        else:
-            images[i, : inImage.shape[0], : inImage.shape[1], : inImage.shape[2]] = (
+        images[i, : inImage.shape[0], : inImage.shape[1], : inImage.shape[2]] = (
                 inImage
             )
 
-        if i > 20 and early_stop:
+        if i > 10 and early_stop:
             break
 
     return images
@@ -94,8 +70,8 @@ class HipMRI3D(Dataset):
         self.labels_paths = [(self.labels_dir / "{}_SEMANTIC".format(image_path.name[0:10])).with_suffix(".nii.gz") for image_path in self.image_paths]
         self.patient_labels = [image.name[0:4] for image in self.image_paths]
 
-        self.images = load_data_3D(self.image_paths, True, False, np.float32, False, early_stop)
-        self.labels = load_data_3D(self.labels_paths, False, True, np.uint8, False, early_stop)
+        self.images = load_data_3D(self.image_paths, True, np.float32, early_stop)
+        self.labels = load_data_3D(self.labels_paths, False, np.uint8, early_stop)
 
     def __len__(self):
         return len(self.image_paths)
@@ -114,3 +90,4 @@ def get_training_test_split(dataset: HipMRI3D):
     test_set = Subset(dataset, test_idx)
 
     return train_set, test_set
+
