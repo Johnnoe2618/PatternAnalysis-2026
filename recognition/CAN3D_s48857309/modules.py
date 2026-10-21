@@ -74,6 +74,41 @@ class CAN3D(nn.Module):
         x = self.segmentationlayer(x)
         return nn.functional.softmax(x, dim=1)
 
+
+class CAN2D:
+    """Progressive dilation network
+
+    Adapted architecture from Fisher Yu, by adding AdaIn as Wai Dai suggests, and leaky relu.
+    """
+    def __init__(self, height=256, width=128, outputs=6):
+        self.height = height
+        self.width = width
+
+        self.cammodule = nn.Sequential(
+            self.create_layer(1, 36, 1),
+            self.create_layer(36, 36, 1),
+            self.create_layer(36, 36, 2, 1, 3, 'identity', padding=2),
+            self.create_layer(36, 36, 4, 1, 3, 'identity', padding=4),
+            self.create_layer(36, 36, 8, 1, 3, 'identity', padding=8),
+            self.create_layer(36, 36, 16, 1, 3, 'identity', padding=16),
+            self.create_layer(36, 36, 16, 1),
+            nn.Conv2d(36, outputs, 1)
+        )
+
+        def create_layer(self, in_channels, out_channels, dilation, stride=1, kernel_size=3, initialiser='xavier', padding=1):
+            conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
+            if initialiser == 'identity' and in_channels == out_channels: # Note: default is xavier, so no action required
+                with torch.no_grad():
+                    conv.weight.fill_(0.0)
+                    for i in range(in_channels):
+                        conv.weight.data[i, i, kernel_size//2, kernel_size//2] = 1.0
+            return nn.Sequential(
+                conv,
+                AdaptiveInstanceNorm(out_channels),
+                nn.LeakyReLU(0.1)
+            )
+
+
 def compute_dsfl(y_probs, y_true, weights=None, alphas=None, smooth = 1e-6, gamma=2):
     """Dice squared focal loss, as described in the (W. Dai, 2021) paper."""
     if weights is None or alphas is None:
