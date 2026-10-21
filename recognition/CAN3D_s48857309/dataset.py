@@ -16,8 +16,7 @@ from sklearn.model_selection import GroupShuffleSplit
 def load_data_3D(
     imageNames,
     normImage=False,
-    dtype=np.float32,
-    early_stop=False,
+    dtype=np.float32
 ):
     """
     Load medical image data from names, cases list provided into a list for
@@ -29,8 +28,6 @@ def load_data_3D(
     normImage : bool ( normalise the image 0.0-1.0)
     dtype : Type of the data . If dtype =np.uint8 , it is assumed that the data
     is labels
-    early_stop : Stop loading pre - maturely ? Leaves arrays mostly empty , for
-    quick loading and testing scripts .
     """
 
     # get fixed size
@@ -53,25 +50,27 @@ def load_data_3D(
 
         if normImage:
             inImage = (inImage - inImage.mean()) / (inImage.std() + 1e-8)
+        
         images[i, : inImage.shape[0], : inImage.shape[1], : inImage.shape[2]] = (
                 inImage
             )
 
-        if i > 10 and early_stop:
-            break
-
     return images
 
 class HipMRI3D(Dataset):
-    def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/semantic_MRs', labels_path='/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only', early_stop=True):
+    def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/semantic_MRs', labels_path='/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only', early_stop=10):
         self.image_dir = Path(images_path)
         self.labels_dir = Path(labels_path)
         self.image_paths = list(self.image_dir.glob('*.nii.gz'))
         self.labels_paths = [(self.labels_dir / "{}_SEMANTIC".format(image_path.name[0:10])).with_suffix(".nii.gz") for image_path in self.image_paths]
         self.patient_labels = [image.name[0:4] for image in self.image_paths]
+        if early_stop > 0:
+            self.image_paths = self.image_paths[:early_stop]
+            self.labels_paths = self.labels_paths[:early_stop]
+            self.patient_labels = self.patient_labels[:early_stop]
 
-        self.images = load_data_3D(self.image_paths, True, np.float32, early_stop)
-        self.labels = load_data_3D(self.labels_paths, False, np.uint8, early_stop)
+        self.images = load_data_3D(self.image_paths, True, np.float32)
+        self.labels = load_data_3D(self.labels_paths, False, np.uint8)
 
     def __len__(self):
         return len(self.image_paths)
