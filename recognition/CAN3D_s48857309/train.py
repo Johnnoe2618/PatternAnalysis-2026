@@ -1,3 +1,5 @@
+from tkinter import W
+
 from dataset import HipMRI3D, get_training_test_split
 from modules import CAN3D, compute_loss
 import torch
@@ -8,15 +10,15 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 
 # Hyper Parameters
-batch_size = 1 # since cant store large memory amount
+batch_size = 8
 learning_rate = 0.001
-num_epochs = 10
+num_epochs = 5
 
 # Create Database
-database = HipMRI3D(early_stop=10)
+database = HipMRI3D(early_stop=30)
 train_set, test_set = get_training_test_split(database)
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 
 # Select Device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -26,28 +28,37 @@ print("Using device: ", device)
 model = CAN3D(256, 256, 128, 6)
 model = model.to(device)
 
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 steps_per_epoch = len(train_loader)
 
 start = time.time()
 model.train()
+
+weights = torch.tensor([0.16, 0.16, 0.16, 0.16, 0.16, 0.16]).to(device)
+
+steps = 0
+optimizer.zero_grad()
 for epoch in range(num_epochs):
     model.train()
     for i, (images, labels) in enumerate(train_loader):
-        optimizer.zero_grad()
 
-        # Load Data (TODO: add transformations)
+        # Load Data
         images = images.to(device)
         labels = labels.to(device).long()
 
         # Evaluate and Backpropogate
         predictions = model(images)
-        loss = compute_loss(predictions, labels)
+        loss = compute_loss(predictions, labels, weights, weights) / batch_size
 
         loss.backward()
-        optimizer.step()
+
+        if (steps + 1) % batch_size == 0:
+            optimizer.step()
+        steps += 1
+
+
         if i == 0 and epoch == 0:
-            print("First Loss: {:.5f}".format(loss.item()), flush=True)
+            print("First Loss: {:.5f}".format(loss.item() * batch_size), flush=True)
 
     # Save the model every third epoch
     if (epoch + 1) % 3 == 0:
