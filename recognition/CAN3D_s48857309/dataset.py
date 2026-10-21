@@ -57,6 +57,39 @@ def load_data_3D(
 
     return images
 
+def load_data_2D(imageNames,  normImage = False, dtype=np.float32):
+    """
+    Load medical image data from names, cases list provided into a list for
+    each .
+
+    This function pre - allocates 4D arrays for conv2d to avoid excessive
+    memory usage .
+
+    normImage : bool ( normalise the image 0.0 -1.0)
+    """
+    num = len( imageNames )
+
+    first_case = niftiImage.get_fdata(caching="unchanged")
+    if len(first_case.shape) == 3:
+        first_case = first_case[:, :, 0]  # sometimes extra dims , remove
+    rows, cols = first_case.shape
+    images = np.zeros((num, rows, cols), dtype=dtype)
+
+    for i, inName in enumerate(tqdm(imageNames)):
+        niftiImage = nib.load(inName)
+        inImage = niftiImage.get_fdata(caching="unchanged")  # read disk only
+
+        if len(inImage.shape) == 3:
+            inImage = inImage[:, :, 0]  # sometimes extra dims in HipMRI_study data
+        inImage = inImage.astype(dtype)
+
+        if normImage:
+            inImage = (inImage - inImage.mean()) / (inImage.std() + 1e-8)
+        
+        images[i, :, :] = inImage
+
+    return images
+
 class HipMRI3D(Dataset):
     def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/semantic_MRs', labels_path='/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only', early_stop=10):
         self.image_dir = Path(images_path)
