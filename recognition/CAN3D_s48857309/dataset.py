@@ -91,7 +91,7 @@ def load_data_2D(imageNames,  normImage = False, dtype=np.float32):
     return images
 
 class HipMRI3D(Dataset):
-    def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/semantic_MRs', labels_path='/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only', early_stop=10):
+    def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/semantic_MRs', labels_path='/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only', early_stop=0):
         self.image_dir = Path(images_path)
         self.labels_dir = Path(labels_path)
         self.image_paths = list(self.image_dir.glob('*.nii.gz'))
