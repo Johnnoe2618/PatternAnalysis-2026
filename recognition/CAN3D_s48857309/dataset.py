@@ -68,7 +68,7 @@ def load_data_2D(imageNames,  normImage = False, dtype=np.float32):
     normImage : bool ( normalise the image 0.0 -1.0)
     """
     num = len( imageNames )
-
+    niftiImage = nib.load(imageNames[0])
     first_case = niftiImage.get_fdata(caching="unchanged")
     if len(first_case.shape) == 3:
         first_case = first_case[:, :, 0]  # sometimes extra dims , remove
@@ -123,3 +123,24 @@ def get_training_test_split(dataset: HipMRI3D):
 
     return train_set, test_set
 
+class HipMRI2D(Dataset):
+    def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train', labels_path='/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_seg_train', early_stop=200):
+        self.image_dir = Path(images_path)
+        self.labels_dir = Path(labels_path)
+        self.image_paths = list(self.image_dir.glob('*.nii.gz'))
+        self.labels_paths = [(self.labels_dir / "seg{}".format(image_path.name[4:]))for image_path in self.image_paths]
+        if early_stop > 0:
+            self.image_paths = self.image_paths[:early_stop]
+            self.labels_paths = self.labels_paths[:early_stop]
+
+        self.images = load_data_2D(self.image_paths, True, np.float32)
+        self.labels = load_data_2D(self.labels_paths, False, np.uint8)
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        return self.images[idx], self.labels[idx]
+
+    def __getitems__(self, idxs):
+        return self.images[idxs], self.labels[idxs]
