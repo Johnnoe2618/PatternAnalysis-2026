@@ -81,12 +81,13 @@ def load_data_2D(imageNames,  normImage = False, dtype=np.float32):
 
         if len(inImage.shape) == 3:
             inImage = inImage[:, :, 0]  # sometimes extra dims in HipMRI_study data
+        inImage = inImage[:rows, :cols] 
         inImage = inImage.astype(dtype)
 
         if normImage:
             inImage = (inImage - inImage.mean()) / (inImage.std() + 1e-8)
         
-        images[i, :, :] = inImage
+        images[i, : inImage.shape[0], : inImage.shape[1]] = inImage
 
     return images
 

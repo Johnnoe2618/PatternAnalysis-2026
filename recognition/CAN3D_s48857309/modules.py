@@ -4,6 +4,7 @@ from sympy import Q
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 class AdaptiveInstanceNorm(nn.Module):
     def __init__(self, channels):
@@ -20,6 +21,8 @@ class CAN3D(nn.Module):
     Implementation is based on descriptions in:
         W. Dai, et al. “CAN3D: Fast 3D medical image segmentation via compact 
         context aggregation”, 2021, https://doi.org/10.1016/j.media.2022.102562.
+
+    I have added an additional layer in the CAM for greater context awareness.
     """
     def __init__(self, depth=256, height=256, width=128, outputs = 6):
         super().__init__()
@@ -49,6 +52,7 @@ class CAN3D(nn.Module):
                 conv.weight.fill_(0.0)
                 for i in range(in_channels):
                     conv.weight.data[i, i, kernel_size//2, kernel_size//2, kernel_size//2] = 1.0
+                
         return nn.Sequential(
             conv,
             AdaptiveInstanceNorm(out_channels),
@@ -75,38 +79,48 @@ class CAN3D(nn.Module):
         return nn.functional.softmax(x, dim=1)
 
 
-class CAN2D:
+class CAN2D(nn.Module):
     """Progressive dilation network
 
     Adapted architecture from Fisher Yu, by adding AdaIn as Wai Dai suggests, and leaky relu.
     """
     def __init__(self, height=256, width=128, outputs=6):
+        super().__init__()
         self.height = height
         self.width = width
 
         self.cammodule = nn.Sequential(
-            self.create_layer(1, 36, 1),
-            self.create_layer(36, 36, 1),
-            self.create_layer(36, 36, 2, 1, 3, 'identity', padding=2),
-            self.create_layer(36, 36, 4, 1, 3, 'identity', padding=4),
-            self.create_layer(36, 36, 8, 1, 3, 'identity', padding=8),
-            self.create_layer(36, 36, 16, 1, 3, 'identity', padding=16),
-            self.create_layer(36, 36, 16, 1),
-            nn.Conv2d(36, outputs, 1)
+            nn.MaxPool2d(2, 2),
+            self.create_layer(1, 8, 1),
+            self.create_layer(8, 16, 1),
+            self.create_layer(16, 32, 2, 1, 3, 'identity', padding=2),
+            self.create_layer(32, 64, 4, 1, 3, 'identity', padding=4),
+            self.create_layer(64, 64, 8, 1, 3, 'identity', padding=8),
+            self.create_layer(64, 64, 16, 1, 3, 'identity', padding=16),
+            self.create_layer(64, 64, 1, 1),
+            nn.Conv2d(64, outputs, 1),
+            nn.Upsample(scale_factor=2)
         )
 
-        def create_layer(self, in_channels, out_channels, dilation, stride=1, kernel_size=3, initialiser='xavier', padding=1):
-            conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
-            if initialiser == 'identity' and in_channels == out_channels: # Note: default is xavier, so no action required
-                with torch.no_grad():
-                    conv.weight.fill_(0.0)
-                    for i in range(in_channels):
-                        conv.weight.data[i, i, kernel_size//2, kernel_size//2] = 1.0
-            return nn.Sequential(
-                conv,
-                AdaptiveInstanceNorm(out_channels),
-                nn.LeakyReLU(0.1)
-            )
+    def forward(self, x):
+        x = x.view(x.shape[0], 1, self.height, self.width)
+        return self.cammodule(x) #nn.functional.softmax(self.cammodule(x), dim=1)
+
+    def create_layer(self, in_channels, out_channels, dilation, stride=1, kernel_size=3, initialiser='xavier', padding=1):
+        conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
+        if initialiser == 'identity':
+            with torch.no_grad():
+                conv.weight.fill_(0.0)
+                conv.weight.data += (torch.randn_like(conv.weight.data) / out_channels) * 0.5
+                channel_dilation_factor = in_channels / out_channels
+                for i in range(out_channels):
+                    j = math.floor(channel_dilation_factor * i)
+                    conv.weight.data[i, j, kernel_size//2, kernel_size//2] = channel_dilation_factor
+        return nn.Sequential(
+            conv,
+            #AdaptiveInstanceNorm(out_channels),
+            nn.LeakyReLU(0.1)
+        )
 
 
 def compute_dsfl(y_probs, y_true, weights=None, alphas=None, smooth = 1e-6, gamma=2):

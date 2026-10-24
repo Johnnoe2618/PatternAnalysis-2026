@@ -22,7 +22,7 @@ print("Using device: ", device)
 # Train Models
 model = CAN3D(256, 256, 128, 6)
 model = model.to(device)
-state_dict = torch.load('final_parameters.pth', weights_only=True, map_location=device)
+state_dict = torch.load('final_parameters_3d.pth', weights_only=True, map_location=device)
 model.load_state_dict(state_dict)
 model.eval()
 
