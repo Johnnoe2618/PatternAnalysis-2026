@@ -30,21 +30,26 @@ model.eval()
 print("Visualising...")
 
 with torch.no_grad():
-    image, label = next(iter(train_loader))
-    image = image.to(device)
+    images, labels = next(iter(train_loader))
+    images = images.to(device)
 
-    plt.subplot(1, 3, 1)
-    plt.imshow(image.cpu().numpy()[0, :, :, 64])
 
-    plt.subplot(1, 3, 2)
-    plt.imshow(label.cpu().numpy()[0, :, :, 64])
+    plt.subplot(2, 2, 1)
+    plt.imshow(images.cpu().numpy()[0, :, :, 64])
 
-    predictions = torch.argmax(model(image), dim=1)
+    plt.subplot(2, 2, 2)
+    plt.imshow(labels.cpu().numpy()[0, :, :, 64])
 
-    plt.subplot(1, 3, 3)
+    output = model(images)
+    predictions = torch.argmax(output, dim=1)
+
+    plt.subplot(2, 2, 3)
+    plt.imshow(output.cpu().numpy()[0, 1, :, :, 64])
+
+    plt.subplot(2, 2, 4)
     plt.imshow(predictions.cpu().numpy()[0, :, :, 64])
 
-plt.savefig("prediction_example.png")
+plt.savefig("prediction_example_3d.png")
 
 # Perform all tests.
 
