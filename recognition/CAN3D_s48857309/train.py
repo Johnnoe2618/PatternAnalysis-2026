@@ -1,5 +1,3 @@
-from tkinter import W
-
 from dataset import HipMRI3D, HipMRI2D, get_training_test_split
 from modules import CAN3D, CAN2D, compute_loss, compute_loss_2d
 import torch
@@ -8,7 +6,19 @@ import time
 
 from torch.utils.data import DataLoader
 import torch.optim as optim
-#import matplotlib.pyplot as plt
+
+import monai.transforms as mt
+
+
+augmentations = mt.Compose([
+    mt.Rand3DElasticd(keys=["image", "label"], prob=1.0, mode=["bilinear", "nearest"], sigma_range=(4, 6), magnitude_range=(50, 130), padding_mode="zeros"),
+    mt.RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
+])
+def transform_training_data(images, labels):
+    #Note: extra dimension it technically the batch, but its size is 1, so it may as well be channel
+    augmented = augmentations({"image": images, "label": labels})
+    return augmented['image'], augmented['label']
+
 
 def train_3d():
     # Hyper Parameters
@@ -38,7 +48,7 @@ def train_3d():
     start = time.time()
     model.train()
 
-    weights = torch.tensor([0.03, 0.03, 0.6, 0.3, 1.2, 1.2]).to(device)
+    weights = torch.tensor([0.03, 0.03, 0.6, 0.3, 8.0, 12.0]).to(device)
 
     steps = 0
     optimizer.zero_grad()
@@ -47,11 +57,13 @@ def train_3d():
         for i, (images, labels) in enumerate(train_loader):
             # Load Data
             images = images.to(device)
-            labels = labels.to(device).long()
+            labels = labels.to(device)
+            images, labels = transform_training_data(images, labels)
+            labels = labels.long()
 
             # Evaluate and Backpropogate
             predictions = model(images)
-            loss = compute_loss(predictions, labels, weights, weights * 6, gamma=2) / batch_size
+            loss = compute_loss(predictions, labels, weights, weights * 3, gamma=2) / batch_size
             loss.backward()
 
             if (steps + 1) % batch_size == 0:

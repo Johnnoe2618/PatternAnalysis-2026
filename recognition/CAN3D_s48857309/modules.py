@@ -1,6 +1,3 @@
-from gettext import install
-
-from sympy import Q
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,35 +27,24 @@ class CAN3D(nn.Module):
         self.height = height
         self.width = width
 
-        self.flatmodule = nn.Sequential(
-            nn.MaxPool3d(2, 2),
-            self.create_layer(1, 6, 1),
-            self.create_layer(6, 16, 1),
-            self.create_layer(16, 36, 2, initialiser='identity', padding=2),
+        self.inlayer = self.create_layer(1, 3, 1)
+        self.cammodule = nn.Sequential(
+            self.create_layer(3, 6, 1, stride=2),
+            self.create_layer(6, 36, 1, stride=2),
+
+            self.create_layer(36, 36, 2, initialiser='identity', padding=2),
             self.create_layer(36, 36, 4, initialiser='identity', padding=4),
             self.create_layer(36, 36, 8, initialiser='identity', padding=8),
             self.create_layer(36, 36, 16, initialiser='identity', padding=16),
-            self.create_layer(36, 48, 1),
-            nn.Conv3d(48, outputs, 1),
-            nn.Upsample(scale_factor=2)
-        )
+            self.create_layer(36, 48, 1, initialiser='identity'),
 
-        #self.inlayer = self.create_layer(1, 3, 1)
-        #self.cammodule = nn.Sequential(
-        #    self.create_layer(3, 6, 1, stride=2),
-        #    self.create_layer(6, 36, 1, stride=2),
-#
-        #    self.create_layer(36, 36, 2, initialiser='identity', padding=2),
-        #    self.create_layer(36, 36, 4, initialiser='identity', padding=4),
-        #    self.create_layer(36, 36, 8, initialiser='identity', padding=8),
-        #    self.create_layer(36, 36, 16, initialiser='identity', padding=16),
-        #    self.create_layer(36, 48, 1, initialiser='identity'),
-#
-        #    self.deconv_2xlayer(48, 36),
-        #    self.deconv_2xlayer(36, 16)
-        #)
-        #self.skip = self.create_layer(3, 16, 1, kernel_size=1, padding=0)
-        #self.segmentationlayer = nn.Conv3d(16, outputs, 1)
+            nn.Upsample(scale_factor=2),
+            self.create_layer(48, 16, 1, initialiser='identity'),
+            nn.Upsample(scale_factor=2),
+
+        )
+        self.skip = self.create_layer(3, 16, 1, kernel_size=1, padding=0)
+        self.segmentationlayer = nn.Conv3d(16, outputs, 1)
 
     def create_layer(self, in_channels, out_channels, dilation, stride=1, padding=1, kernel_size=3, initialiser='xavier'):
         conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
@@ -77,23 +63,15 @@ class CAN3D(nn.Module):
             nn.LeakyReLU(0.1)
         )
 
-    def deconv_2xlayer(self, in_channels, out_channels):
-        return nn.Sequential(
-            nn.ConvTranspose3d(in_channels, out_channels, 2, 2, padding=0),
-            AdaptiveInstanceNorm(out_channels),
-            nn.LeakyReLU(0.1)
-        )
-
     def forward(self, x):
         x = x.view(x.shape[0], 1, self.depth, self.height, self.width)
-        return self.flatmodule(x)
         
         x = self.inlayer(x)
-        #u = self.skip(x)
-        #x = self.cammodule(x)
-        #x = x + u
-        #x = self.segmentationlayer(x)
-        #return x
+        u = self.skip(x)
+        x = self.cammodule(x)
+        x = x + u
+        x = self.segmentationlayer(x)
+        return x
 
 class CAN2D(nn.Module):
     """Progressive dilation network

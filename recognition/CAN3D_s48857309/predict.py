@@ -35,19 +35,19 @@ with torch.no_grad():
 
 
     plt.subplot(2, 2, 1)
-    plt.imshow(images.cpu().numpy()[0, :, :, 64])
+    plt.imshow(images.cpu().numpy()[0, :, 128, :])
 
     plt.subplot(2, 2, 2)
-    plt.imshow(labels.cpu().numpy()[0, :, :, 64])
+    plt.imshow(labels.cpu().numpy()[0, :, 128, :])
 
     output = model(images)
     predictions = torch.argmax(output, dim=1)
 
     plt.subplot(2, 2, 3)
-    plt.imshow(output.cpu().numpy()[0, 1, :, :, 64])
+    plt.imshow(output.cpu().numpy()[0, 1, :, 128, :])
 
     plt.subplot(2, 2, 4)
-    plt.imshow(predictions.cpu().numpy()[0, :, :, 64])
+    plt.imshow(predictions.cpu().numpy()[0, :, 128, :])
 
 plt.savefig("prediction_example_3d.png")
 
