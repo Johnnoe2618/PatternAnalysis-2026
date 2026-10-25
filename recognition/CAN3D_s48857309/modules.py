@@ -30,22 +30,35 @@ class CAN3D(nn.Module):
         self.height = height
         self.width = width
 
-        self.inlayer = self.create_layer(1, 3, 1)
-        self.cammodule = nn.Sequential(
-            self.create_layer(3, 6, 1, stride=2),
-            self.create_layer(6, 36, 1, stride=2),
-
-            self.create_layer(36, 36, 2, initialiser='identity', padding=2),
+        self.flatmodule = nn.Sequential(
+            nn.MaxPool3d(2, 2),
+            self.create_layer(1, 6, 1),
+            self.create_layer(6, 16, 1),
+            self.create_layer(16, 36, 2, initialiser='identity', padding=2),
             self.create_layer(36, 36, 4, initialiser='identity', padding=4),
             self.create_layer(36, 36, 8, initialiser='identity', padding=8),
             self.create_layer(36, 36, 16, initialiser='identity', padding=16),
-            self.create_layer(36, 48, 1, initialiser='identity'),
-
-            self.deconv_2xlayer(48, 36),
-            self.deconv_2xlayer(36, 16)
+            self.create_layer(36, 48, 1),
+            nn.Conv3d(48, outputs, 1),
+            nn.Upsample(scale_factor=2)
         )
-        self.skip = self.create_layer(3, 16, 1, kernel_size=1, padding=0)
-        self.segmentationlayer = nn.Conv3d(16, outputs, 1)
+
+        #self.inlayer = self.create_layer(1, 3, 1)
+        #self.cammodule = nn.Sequential(
+        #    self.create_layer(3, 6, 1, stride=2),
+        #    self.create_layer(6, 36, 1, stride=2),
+#
+        #    self.create_layer(36, 36, 2, initialiser='identity', padding=2),
+        #    self.create_layer(36, 36, 4, initialiser='identity', padding=4),
+        #    self.create_layer(36, 36, 8, initialiser='identity', padding=8),
+        #    self.create_layer(36, 36, 16, initialiser='identity', padding=16),
+        #    self.create_layer(36, 48, 1, initialiser='identity'),
+#
+        #    self.deconv_2xlayer(48, 36),
+        #    self.deconv_2xlayer(36, 16)
+        #)
+        #self.skip = self.create_layer(3, 16, 1, kernel_size=1, padding=0)
+        #self.segmentationlayer = nn.Conv3d(16, outputs, 1)
 
     def create_layer(self, in_channels, out_channels, dilation, stride=1, padding=1, kernel_size=3, initialiser='xavier'):
         conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
@@ -72,13 +85,15 @@ class CAN3D(nn.Module):
         )
 
     def forward(self, x):
-        x = self.inlayer(x.view(x.shape[0], 1, self.depth, self.height, self.width))
-        u = self.skip(x)
-        x = self.cammodule(x)
-        x = x + u
-        x = self.segmentationlayer(x)
-        return x
-
+        x = x.view(x.shape[0], 1, self.depth, self.height, self.width)
+        return self.flatmodule(x)
+        
+        x = self.inlayer(x)
+        #u = self.skip(x)
+        #x = self.cammodule(x)
+        #x = x + u
+        #x = self.segmentationlayer(x)
+        #return x
 
 class CAN2D(nn.Module):
     """Progressive dilation network
@@ -105,7 +120,8 @@ class CAN2D(nn.Module):
 
     def forward(self, x):
         x = x.view(x.shape[0], 1, self.height, self.width)
-        return self.cammodule(x)
+        x = self.cammodule(x)
+        return x
 
     def create_layer(self, in_channels, out_channels, dilation, stride=1, kernel_size=3, initialiser='xavier', padding=1):
         conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
@@ -119,11 +135,12 @@ class CAN2D(nn.Module):
                     conv.weight.data[i, j, kernel_size//2, kernel_size//2] = channel_dilation_factor
         return nn.Sequential(
             conv,
+            AdaptiveInstanceNorm(out_channels),
             nn.LeakyReLU(0.1)
         )
 
 
-def compute_dsfl(y_probs, y_true, weights=None, alphas=None, smooth = 1e-4, gamma=2):
+def compute_dsfl(y_probs, y_true, weights=None, alphas=None, smooth = 0.01, gamma=2):
     """Dice squared focal loss, as described in the (W. Dai, 2021) paper."""
     if weights is None or alphas is None:
         raise ValueError("Weights and alphas must be provided as tensors on the device.")
@@ -134,7 +151,7 @@ def compute_dsfl(y_probs, y_true, weights=None, alphas=None, smooth = 1e-4, gamm
 
     difference = y_probs - y_true
     phi = torch.sum(difference * difference, dim=-1)
-    denominator = torch.sum(y_probs * y_probs + y_true * y_true, dim=-1) + smooth
+    denominator = torch.sum(y_probs * y_probs + y_true * y_true + smooth, dim=-1)
 
     dsl_per_class = phi / denominator + phi / voxel_count
     dsl_per_class = torch.mean(dsl_per_class, dim=0)
@@ -144,7 +161,8 @@ def compute_dsfl(y_probs, y_true, weights=None, alphas=None, smooth = 1e-4, gamm
     return dsfl
 
 def compute_loss(predictions, labels, weights, alphas, gamma = 2):
-    """Takes logits predictions as input"""
+    """Takes logits predictions as input
+    Note: gamma < 1 can cause instability."""
     predictions = nn.functional.softmax(predictions, dim=1)
     labels = nn.functional.one_hot(labels, predictions.shape[1]).permute(0, 4, 1, 2, 3)
     return compute_dsfl(predictions, labels, weights, alphas, gamma=gamma)
@@ -163,7 +181,7 @@ def calculate_descrete_dsc(prediction_logits, label, smooth = 1e-6):
     return sum_dice_per_class, batch_size
 
 
-def compute_dsfl_2d(y_probs, y_true, weights=None, alphas=None, smooth = 1e-4, gamma=2):
+def compute_dsfl_2d(y_probs, y_true, weights=None, alphas=None, smooth = 0.01, gamma=2):
     """Dice squared focal loss, as described in the (W. Dai, 2021) paper."""
     if weights is None or alphas is None:
         raise ValueError("Weights and alphas must be provided as tensors on the device.")
@@ -174,17 +192,20 @@ def compute_dsfl_2d(y_probs, y_true, weights=None, alphas=None, smooth = 1e-4, g
 
     difference = y_probs - y_true
     phi = torch.sum(difference * difference, dim=-1)
-    denominator = torch.sum(y_probs * y_probs + y_true * y_true, dim=-1) + smooth
+    denominator = torch.sum(y_probs * y_probs + y_true * y_true + smooth, dim=-1)
 
     dsl_per_class = phi / denominator + phi / pixel_count
     dsl_per_class = torch.mean(dsl_per_class, dim=0)
     fl_per_class = -torch.mean(y_true * torch.pow(1.0 - y_probs, gamma) * torch.log(y_probs + smooth), dim=-1)
     fl_per_class = torch.mean(fl_per_class, dim=0)
     dsfl = torch.dot(dsl_per_class, weights) + torch.dot(fl_per_class, alphas)
+
     return dsfl
 
 def compute_loss_2d(predictions, labels, weights, alphas, gamma = 2):
-    """Takes logits predictions as input"""
+    """Takes logits predictions as input.
+    Note: gamma < 1 can cause instability."""
     predictions = nn.functional.softmax(predictions, dim=1)
     labels = nn.functional.one_hot(labels, predictions.shape[1]).permute(0, 3, 1, 2)
-    return compute_dsfl_2d(predictions, labels, weights, alphas, gamma = gamma)
+    dsfl = compute_dsfl_2d(predictions, labels, weights, alphas, gamma = gamma)
+    return dsfl

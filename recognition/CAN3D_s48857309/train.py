@@ -13,8 +13,8 @@ import torch.optim as optim
 def train_3d():
     # Hyper Parameters
     batch_size = 8
-    learning_rate = 0.02
-    num_epochs = 80
+    learning_rate = 0.01
+    num_epochs = 100
 
     # Create Database
     database = HipMRI3D(early_stop=30)
@@ -31,14 +31,14 @@ def train_3d():
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     total_steps = (len(train_loader) * num_epochs) // batch_size
     schedular = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, total_steps=total_steps)
 
     start = time.time()
     model.train()
 
-    weights = torch.tensor([0.16, 0.16, 0.16, 0.16, 0.16, 0.16]).to(device)
+    weights = torch.tensor([0.03, 0.03, 0.6, 0.3, 1.2, 1.2]).to(device)
 
     steps = 0
     optimizer.zero_grad()
@@ -51,11 +51,11 @@ def train_3d():
 
             # Evaluate and Backpropogate
             predictions = model(images)
-            loss = criterion(predictions, labels) / batch_size #compute_loss(predictions, labels, weights, weights) / batch_size
-
+            loss = compute_loss(predictions, labels, weights, weights * 6, gamma=2) / batch_size
             loss.backward()
 
             if (steps + 1) % batch_size == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
                 optimizer.zero_grad()
                 schedular.step()
@@ -64,8 +64,8 @@ def train_3d():
             if i == 0 and epoch == 0:
                 print("First Loss: {:.5f}".format(loss.item() * batch_size), flush=True)
 
-        # Save the model every third epoch
-        if (epoch + 1) % 3 == 0:
+        # Save the model every tength epoch
+        if (epoch + 1) % 10 == 0:
             torch.save(model.state_dict(), 'parameters_3d_epoch_{}.pth'.format(epoch))
 
         print("Epoch [{}/{}],  Loss: {:.5f}, Time: {} secs"
@@ -76,11 +76,11 @@ def train_3d():
 def train_2d():
     # Hyper Parameters
     batch_size = 32
-    learning_rate = 0.01
-    num_epochs = 1000
+    learning_rate = 0.001
+    num_epochs = 300
 
     # Create Database
-    database = HipMRI2D(early_stop=5, images_path="../data/2dimages/", labels_path="../data/2dsemantic/")
+    database = HipMRI2D(early_stop=500)
     train_loader = DataLoader(database, batch_size=batch_size, shuffle=True)
 
     # Select Device
@@ -92,7 +92,7 @@ def train_2d():
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     steps_per_epoch = len(train_loader)
     schedular = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 
@@ -115,8 +115,13 @@ def train_2d():
             predictions = model(images)
             loss = compute_loss_2d(predictions, labels, weights, weights * 6, gamma=2)
             loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             schedular.step()
+
+
+            print("Loss: ", loss.item())
 
             if i == 0 and epoch == 0:
                 print("First Loss: {:.5f}".format(loss.item() * batch_size), flush=True)
@@ -130,5 +135,5 @@ def train_2d():
 
     torch.save(model.state_dict(), 'final_parameters_2d.pth')
 
-train_2d()
-#train_3d()
+#train_2d()
+train_3d()

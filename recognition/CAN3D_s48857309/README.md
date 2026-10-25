@@ -101,6 +101,8 @@ A possible fallback if my planned experiment does not work, is to use the baseli
 
 ## References
 W. Dai, S. Chandra, et al. “CAN3D: Fast 3D medical image segmentation via compact context aggregation”, 2021, https://doi.org/10.1016/j.media.2022.102562.
+Olaf Ronneberger, et al. "U-Net: Convolutional Networks for Biomedical Image Segmentation", 2015, https://doi.org/10.48550/arXiv.1505.04597
+F. Yu and V. Koltun, “Multi-scale context aggregation by dilated convolutions”, 2015, https://doi.org/10.48550/arXiv.1511.07122 
 
 ## Artificial Intelligence Usage Disclosure
 I have not used AI tools to help program or give ideas for any part of this project.
