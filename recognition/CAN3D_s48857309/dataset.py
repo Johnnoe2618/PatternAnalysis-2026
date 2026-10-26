@@ -115,14 +115,22 @@ class HipMRI3D(Dataset):
     def __getitems__(self, idxs):
         return self.images[idxs], self.labels[idxs]
 
-def get_training_test_split(dataset: HipMRI3D):
-    gss = GroupShuffleSplit(n_splits=1, test_size=0.20, random_state=42)
-    train_idx, test_idx = next(gss.split(dataset.images, groups=dataset.patient_labels))
+def get_training_test_split(dataset: HipMRI3D, test_size=0.2, val_size=0.1):
+    # Split into training/validation and test set
+    gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=42)
+    train_val_idx, test_idx = next(gss.split(dataset.images, groups=dataset.patient_labels))
 
-    train_set = Subset(dataset, train_idx)
+    val_ratio = val_size / (1 - test_size)
+    groups_train_val = [dataset.patient_labels[train_val_idx[i]] for i in range(len(train_val_idx))]
+    gss = GroupShuffleSplit(n_splits=1, test_size=val_ratio, random_state=42)
+    train_idx, val_idx = next(gss.split(train_val_idx, groups=groups_train_val))
+
+
+    train_set = Subset(dataset, train_val_idx[train_idx])
+    val_set = Subset(dataset, train_val_idx[val_idx])
     test_set = Subset(dataset, test_idx)
 
-    return train_set, test_set
+    return train_set, val_set, test_set
 
 class HipMRI2D(Dataset):
     def __init__(self, images_path='/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train', labels_path='/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_seg_train', early_stop=200):
