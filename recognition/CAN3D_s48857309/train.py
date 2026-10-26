@@ -11,9 +11,8 @@ import torch.optim as optim
 
 import monai.transforms as mt
 
-
 augmentations = mt.Compose([
-    mt.Rand3DElasticd(keys=["image", "label"], prob=0.5, mode=["bilinear", "nearest"], sigma_range=(4, 6), magnitude_range=(50, 130), padding_mode="zeros"),
+    mt.Rand3DElasticd(keys=["image", "label"], prob=0.3, mode=["bilinear", "nearest"], sigma_range=(5, 7), magnitude_range=(50, 120), padding_mode="zeros"),
     mt.RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
 ])
 def transform_training_data(images, labels):
@@ -23,10 +22,11 @@ def transform_training_data(images, labels):
 
 
 def train_3d():
+    print("Starting...")
     # Hyper Parameters
     batch_size = 8
     learning_rate = 0.01
-    num_epochs = 70
+    num_epochs = 100
 
     # Create Database
     database = HipMRI3D(early_stop=0)
@@ -44,7 +44,7 @@ def train_3d():
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     total_steps = (len(train_loader) * num_epochs) // batch_size
     schedular = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, total_steps=total_steps)
 
@@ -54,7 +54,7 @@ def train_3d():
     validation_scores = []
     loss_scores = []
 
-    weights = torch.tensor([0.03, 0.03, 0.6, 0.3, 8.0, 12.0]).to(device)
+    weights = torch.tensor([0.03, 0.03, 0.6, 0.3, 8.0, 18.0]).to(device)
 
     steps = 0
     optimizer.zero_grad()
@@ -113,12 +113,13 @@ def train_3d():
     plt.subplot(1, 2, 1)
     plt.plot(list(range(num_epochs)), loss_scores)
     plt.title("Epochs vs Loss")
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 2, 2)
     plt.plot(list(range(num_epochs)), validation_scores)
     plt.title("Epochs vs Validation Score")
     plt.savefig("validation_curves.png")
 
-
+#train_2d()
+train_3d()
 def train_2d():
     # Hyper Parameters
     batch_size = 32

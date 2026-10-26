@@ -3,14 +3,16 @@ from modules import CAN3D, compute_loss, calculate_descrete_dsc
 import torch
 import time
 import matplotlib.pyplot as plt
+import monai.transforms as mt
 
 from torch.utils.data import DataLoader
 
 
 # Create Database
-database = HipMRI3D(early_stop=5, images_path="../data/images/", labels_path="../data/semantic/")
-train_set, test_set = get_training_test_split(database)
+database = HipMRI3D(early_stop=0)
+train_set, val_set, test_set = get_training_test_split(database, test_size=0.2, val_size=0.1)
 train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+val_loader = DataLoader(val_set, batch_size=1, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 
 
@@ -19,7 +21,7 @@ test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device: ", device)
 
-# Train Models
+# Load Models
 model = CAN3D()
 model = model.to(device)
 state_dict = torch.load('final_parameters_3d.pth', weights_only=True, map_location=device)
@@ -32,7 +34,7 @@ print("Visualising...")
 with torch.no_grad():
     images, labels = next(iter(train_loader))
     images = images.to(device)
-
+    labels = labels.to(device).long()
 
     plt.subplot(2, 2, 1)
     plt.imshow(images.cpu().numpy()[0, :, 128, :])

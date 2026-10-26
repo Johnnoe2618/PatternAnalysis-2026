@@ -39,12 +39,12 @@ class CAN3D(nn.Module):
             self.create_layer(36, 48, 1, initialiser='identity'),
 
             nn.Upsample(scale_factor=2),
-            self.create_layer(48, 16, 1, initialiser='identity'),
+            self.create_layer(48, 24, 1, initialiser='identity'),
             nn.Upsample(scale_factor=2),
 
         )
-        self.skip = self.create_layer(3, 16, 1, kernel_size=1, padding=0)
-        self.segmentationlayer = nn.Conv3d(16, outputs, 1)
+        self.skip = self.create_layer(3, 24, 1, kernel_size=1, padding=0)
+        self.segmentationlayer = nn.Conv3d(24, outputs, 1)
 
     def create_layer(self, in_channels, out_channels, dilation, stride=1, padding=1, kernel_size=3, initialiser='xavier'):
         conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding=padding, dilation=dilation)
