@@ -102,9 +102,9 @@ A possible fallback if my planned experiment does not work, is to use the baseli
 
 
 ## Dependencies and Reproducibility
-numpy: 2.4.6
-torch: 2.14.1, cuda enabled
 Python: 3.11.17
+torch: 2.14.1, cuda enabled
+numpy: 2.4.6
 matplotlib: 3.11.2
 monai: 1.6.1
 nibabel: 5.4.2
@@ -114,6 +114,7 @@ tqdm: 4.70.1
 Splits are generated with random_state=42 to maintain reproducibility. 
 
 ## Examples and Plots
+
 
 ## Pre-Processing
 The following pre-processing steps were taken during the training process:
@@ -125,7 +126,7 @@ During testing and model validation and evaluation, only cropping and standardis
 
 I split the data into 3 splits, training, validation, and testing, with 70-10-20 percentages respectively. 
 Scikit-learn's GroupShuffleSplit was used to split on a patient-level, so that false-replication does not cause data leakage from these three sets. 
-A 20% split was chosen for testing to get a reasonably accurate, measure. Since the dataset has 211 samples, this means that approximately 40 samples are used for final model evaluation, which should give a reasonable estimate of the accuracy of the model.  
+A 20% split was chosen for testing to get a reasonably accurate, measure. Since the dataset has 211 samples, this means that approximately 40 samples are used for final model evaluation, which should give a reasonable estimate of the accuracy of the model. The final splits used end up with 122-25-64 samples respectively.
 The 20% test split was not used while training and tuning models, so as to not bias or overfit to it, and instead the 10% validation split was used consistently through the tuning and choice of the final model.
 
 ## Open Research Dilemma
@@ -133,6 +134,23 @@ The 20% test split was not used while training and tuning models, so as to not b
 ### Computational Efficiency
 ### Errors
 ### Recommendations
+
+## Journal and Personal Reflection
+Before getting the final CAN3D model, I attempted training using several different training methods, loss functions, and slight changes to the architecture. I also made several big mistakes while implementing this model and training that I had to correct before getting good results. I also made adaptations to improve performance for the final model. 
+
+1) The first model I trained used the CAN3D architecture suggested by the paper, with TransposedConvolutions for upsampling, and concatenating the skip connection. This model performed extremely poorly, after training for 20 minutes, it only game given a constant prediction for the 'body' class (which is the most common class).
+2) I found a mistake in that implementation, where I found that the Adaptive Instance Norm layers were not the AdaIn layers seen in models like StyleGAN, but were defined as a weighted sum of an Instance Norm and an Identity. 
+3) After changing the upsampling channel count to 3, and summing rather than concatenating the skip connection (because I felt that reducing the number of parameters would reduce the model complexity, so would improve training stability). This model was the one provided for the example run in the feasibility report. As seen, this produced pretty chaotic results.
+4) I found a bug in the Dataset implementation which was producing blanks, fixing this made a big difference for obvious reasons.
+5) I then started implementing the baseline, since I was getting errors in the 3D model I could not figure out. In retrospect, I should have done this first. 
+6) After adding the correct implementation of the identity initialisation for the CAM module, I got my first decent model for CAN2D. I still had a major mistake in this implementation.
+7) I finally found the big mistake I was making, where my implementation for Focal loss term in the DSF loss was incorrect. I was missing a major '* y_true' term.
+8) After fixing this issue, I tried training with varying hyperparameters, but I still couldn't get a good result. I added an additional layer to the CAM module to increase the perceptive field of the model, and this produced marginally better results, but still not very good. 
+9) To get a basic working CAN3D model, I tried simplifying the problem by downsampling via MaxPool, and doing a simple nearest neighbour upsample, and I removed the TransposedConvolution layers. This produced the first reasonable results of any model I had attempted to this point.
+10) After adding image augmentation to training, I re-implemented the old kernel-stride-based downsampling, but used nearest-neighbour upsample layers with convolutions rather than TransposedConvolution layers. This massively improved training stability compared to previous models.
+11) Then, to produce the final model, I played with the number of channels of the upsampling layers, and increased the weighting of rarer classes in the loss function (specifically, Rectum and Prostate class weights were massively increased). I kept increasing the weights of prostate until I got the final model with Dice Coefficient > 0.7 across the board. I noticed that as I increased the weights for the prostate, as expected, the background and body dice-coefficients got worse (which is a trade-off induced by the loss function weights).
+
+I tested many other variations, but these were the main milestones I committed.
 
 ## References
 W. Dai, S. Chandra, et al. “CAN3D: Fast 3D medical image segmentation via compact context aggregation”, 2021, https://doi.org/10.1016/j.media.2022.102562.
