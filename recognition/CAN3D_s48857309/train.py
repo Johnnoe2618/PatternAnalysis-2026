@@ -118,17 +118,27 @@ def train_3d():
     plt.title("Epochs vs Validation Score")
     plt.savefig("validation_curves.png")
 
-#train_2d()
-train_3d()
+
+def volume_to_2d_batch(volume : torch.Tensor):
+    # take height-wise slices
+    return volume.permute(1, 0, 2)
+
+def batch_output_to_3d_volume_batch(batch : torch.Tensor):
+    return batch.permute(1, 2, 0, 3)[None,:,:,:,:]
+
 def train_2d():
+    print("Starting...")
     # Hyper Parameters
-    batch_size = 32
-    learning_rate = 0.001
-    num_epochs = 300
+    batch_size = 8
+    learning_rate = 0.01
+    num_epochs = 50
 
     # Create Database
-    database = HipMRI2D(early_stop=500)
-    train_loader = DataLoader(database, batch_size=batch_size, shuffle=True)
+    database = HipMRI3D(early_stop=30)
+    train_set, val_set, test_set = get_training_test_split(database, test_size=0.2, val_size=0.1)
+    train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 
     # Select Device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -139,48 +149,79 @@ def train_2d():
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    steps_per_epoch = len(train_loader)
-    schedular = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    total_steps = (len(train_loader) * num_epochs) // batch_size
+    schedular = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, total_steps=total_steps)
 
     start = time.time()
     model.train()
 
-    weights = torch.tensor([0.16, 0.16, 0.16, 0.16, 0.16, 0.16]).to(device)
+    validation_scores = []
+    loss_scores = []
 
+    weights = torch.tensor([0.03, 0.03, 0.6, 0.3, 8.0, 18.0]).to(device)
+
+    steps = 0
     optimizer.zero_grad()
     for epoch in range(num_epochs):
         model.train()
         for i, (images, labels) in enumerate(train_loader):
-            optimizer.zero_grad()
-
             # Load Data
             images = images.to(device)
-            labels = labels.to(device).long()
+            labels = labels.to(device)
+            images, labels = transform_training_data(images, labels)
+            labels = labels.long()
 
             # Evaluate and Backpropogate
-            predictions = model(images)
-            loss = compute_loss_2d(predictions, labels, weights, weights * 6, gamma=2)
+            predictions = batch_output_to_3d_volume_batch(model(volume_to_2d_batch(images[0])))
+            loss = compute_loss(predictions, labels, weights, weights * 3, gamma=2) / batch_size
             loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            schedular.step()
-
-
-            print("Loss: ", loss.item())
+            if (steps + 1) % batch_size == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                optimizer.zero_grad()
+                schedular.step()
+            steps += 1
 
             if i == 0 and epoch == 0:
                 print("First Loss: {:.5f}".format(loss.item() * batch_size), flush=True)
 
         # Save the model every tenth epoch
-        if (epoch + 1) % 100 == 0:
+        if (epoch + 1) % 10 == 0:
             torch.save(model.state_dict(), 'parameters_2d_epoch_{}.pth'.format(epoch))
 
-        print("Epoch [{}/{}],  Loss: {:.5f}, Time: {} secs"
-            .format(epoch+1, num_epochs, loss.item(), time.time() - start), flush=True)
+        # Perform Validation Calculation
+        total_sum = torch.zeros((6), device=device)
+        total_validation_samples = 0
+
+        with torch.inference_mode():
+            for i, (image, label) in enumerate(val_loader):
+                image = image.to(device)
+                label = label.to(device).long()
+
+                predictions = batch_output_to_3d_volume_batch(model(volume_to_2d_batch(images[0])))
+
+                sum_dice_per_class, no_in_batch = calculate_descrete_dsc(predictions, label)
+                total_sum += sum_dice_per_class
+                total_validation_samples += no_in_batch
+
+        total_sum = total_sum / total_validation_samples
+        validation_scores.append(total_sum[5].item())
+        loss_scores.append(loss.item())
+
+        print("Epoch [{}/{}],  Loss: {:.5f}, Validation: {} Time: {} secs"
+            .format(epoch+1, num_epochs, loss.item(), total_sum, time.time() - start), flush=True)
 
     torch.save(model.state_dict(), 'final_parameters_2d.pth')
 
-#train_2d()
-train_3d()
+    plt.subplot(1, 2, 1)
+    plt.plot(list(range(num_epochs)), loss_scores)
+    plt.title("Epochs vs Loss")
+    plt.subplot(1, 2, 2)
+    plt.plot(list(range(num_epochs)), validation_scores)
+    plt.title("Epochs vs Validation Score")
+    plt.savefig("validation_curves_2d.png")
+
+train_2d()
+#train_3d()
