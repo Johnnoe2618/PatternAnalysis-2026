@@ -12,6 +12,7 @@ context to avoid hazardous failures such as failure in segmenting accurately top
 and avoiding leaking across the thin interface of the prostate into nearby organs.
 
 
+
 ## Feasiblity Report
 ### User Need, Scope & Acceptance Criteria
 The intended users of our model are imaging specialists and radiologists who
@@ -98,6 +99,40 @@ Computational requirements:
 My next planned experiment is to test with the full dataset, for a larger number of epochs, and using data augmentation with random translations. I also want to experiment with different more basic models.
 
 A possible fallback if my planned experiment does not work, is to use the baseline model instead, assming that it has reasonable performance. 
+
+
+## Dependencies and Reproducibility
+numpy: 2.4.6
+torch: 2.14.1, cuda enabled
+Python: 3.11.17
+matplotlib: 3.11.2
+monai: 1.6.1
+nibabel: 5.4.2
+scikit-learn: 1.9.1
+tqdm: 4.70.1
+
+Splits are generated with random_state=42 to maintain reproducibility. 
+
+## Examples and Plots
+
+## Pre-Processing
+The following pre-processing steps were taken during the training process:
+- Cropping every image to the same size 256x256x128. (Most images were unaltered)
+- Each image undergoes standardisation independently, so each image has the same range of values.
+- Augmentation with random elastic deformation from Monai, and random flipping along the bodies natural bilateral axis.
+
+During testing and model validation and evaluation, only cropping and standardisation was applied.
+
+I split the data into 3 splits, training, validation, and testing, with 70-10-20 percentages respectively. 
+Scikit-learn's GroupShuffleSplit was used to split on a patient-level, so that false-replication does not cause data leakage from these three sets. 
+A 20% split was chosen for testing to get a reasonably accurate, measure. Since the dataset has 211 samples, this means that approximately 40 samples are used for final model evaluation, which should give a reasonable estimate of the accuracy of the model.  
+The 20% test split was not used while training and tuning models, so as to not bias or overfit to it, and instead the 10% validation split was used consistently through the tuning and choice of the final model.
+
+## Open Research Dilemma
+### Baseline Comparison
+### Computational Efficiency
+### Errors
+### Recommendations
 
 ## References
 W. Dai, S. Chandra, et al. “CAN3D: Fast 3D medical image segmentation via compact context aggregation”, 2021, https://doi.org/10.1016/j.media.2022.102562.
