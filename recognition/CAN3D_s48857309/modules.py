@@ -158,6 +158,17 @@ def calculate_descrete_dsc(prediction_logits, label, smooth = 1e-6):
     sum_dice_per_class = torch.sum(dice_per_class, dim=0)
     return sum_dice_per_class, batch_size
 
+def calculate_intersection_over_union(prediction_logits, label, smooth = 1e-6):
+    batch_size, num_classes = prediction_logits.shape[0], prediction_logits.shape[1]
+    y_preds = torch.argmax(prediction_logits, dim=1)
+    y_preds = nn.functional.one_hot(y_preds, num_classes).permute(0, 4, 1, 2, 3).view(batch_size, num_classes, -1)
+    y_true = nn.functional.one_hot(label, num_classes).permute(0, 4, 1, 2, 3).view(batch_size, num_classes, -1)
+
+    intersection = torch.sum(y_preds * y_true, dim=-1)
+    union = torch.sum(y_preds + y_true, dim=-1) - intersection
+    iou_per_class = torch.sum(intersection / (union + smooth), dim=0)
+    return iou_per_class, batch_size
+
 
 def compute_dsfl_2d(y_probs, y_true, weights=None, alphas=None, smooth = 0.01, gamma=2):
     """Dice squared focal loss, as described in the (W. Dai, 2021) paper."""
