@@ -1,22 +1,31 @@
 # CAN3D: Anatomical Countouring in 3D for Radiotherapy planning
 The CAN3D model is a model designed for semantic image segmentation (segmenting 
 an image on a pixel-by-pixel level), for 3D image volumes. The model uses dilated 
-convolutions to expand its receptive field, so that it can use both local and global context
+convolutions to rapidly expand its receptive field, so that it can use both local and global context
 to make predictions. Compared to other models, it has lower memory and computational 
 costs, which is relevent to applications which are deployed in memory and gpu limited
-clinical imaging systems. We are using this model to perform real-time segmentation
+clinical imaging systems. We are using this model to perform segmentation
 of 3D MRI images of the prostate for prostate radiotherapy planning. We are interested in whether
 the 3D context provides significant benefit over baseline 2D models, ideally by using 3D 
 context to avoid hazardous failures such as failure in segmenting accurately top and bottom slices 
 (which are likely under-fitted due to the fact that these slices account for only a small percentage of the 2D slice data),
-and avoiding leaking across the thin interface of the prostate into nearby organs.
+and avoiding leaking radiation across the thin interface of the prostate into nearby organs.
 
+The CAN3D model works by using strided convolutions to reduce the effective size of the image, and then use dilated convolutions to rapidly expand the receptive field, and then using upsampling and a skip connection to reconstruct the full resolution. Another model with similar characteristics is the 3D UNet model, which uses iterative downsampling and upsampling in order to increase the receptive field rather than using dilated convolutions. The section of the model performing the dilated convolutions is known as the CAM (context aggregation module). Importantly, the CAN3D model relies on identity initialisation inside the CAM to train stably. Dilated convolutions have the advantage of retaining the input image resolution as you expand the receptive field, which minimises the complexity of the model considerable compared to UNet models.
+
+The following diagram (F. Yu, 2015), illustrates how dilated convolutions can rapidly expand the receptive field (cooloured in blue), using exponentially expanding dilation factors. At each iteration a, b, c, shown below, we see the area that can possibly contribute to the value of the centre pixel (known as the receptive field of a pixel) as we apply each convolutional layer one after the other.
+
+![Dilated convolutions](dilated_convolutions.png)
+
+My final model uses the architecture below. The boxes in purple highlight the CAM using identity initialisation. 
+
+![Finalmodel architecture diagram](final_model_architecture.png)
 
 
 ## Feasiblity Report
 ### User Need, Scope & Acceptance Criteria
 The intended users of our model are imaging specialists and radiologists who
-would like assistance in segmentation for real-time prostate radiotherapy planning, and in
+would like assistance in segmentation for prostate radiotherapy planning, and in
 order to save clinical countouring time. The core problem for this model is that common metrics such as the dice coefficient
 can often achieve a high accuracy while failing at the boundary of the organ, where boundary leakage can cause severe side effects for patients, such as radiation induced inflammation of the bladder or rectal lining.
 Additionally, models can often achieve good average accuracy while having catestrophically low accuracy on the base and apex slices (especially for 2D models), because central slices often contain easily recognisable broad regions.
@@ -24,7 +33,7 @@ Additionally, models can often achieve good average accuracy while having catest
 Core problems that need to be solved are:
 * Achieving good results on boundaries.
 * Achieving uniformly good results on all slice planes (including base and apex slices).
-* Near real-time efficiency on inference for GPU limited systems.
+* Fast inference for GPU limited systems.
 
 The purpose of the prototype is to see initial results on partially trained outputs to 
 see if further training will yields results worth the additional computaitonal expense, to see that
@@ -32,7 +41,7 @@ training is at least stable in early epochs, and whether the proposed architectu
 than simpler baselines in terms of accuracy and inference time.
 
 I will use the following acceptance criteria:
-* Segmentation of the prototype model visually shows reasonable gains on base and apex slices compared to the 2D baseline.
+* Segmentation of the model visually shows reasonable gains on base and apex slices compared to the 2D baseline.
 * Runtime of inference occurs in under 2 seconds on a CPU.
 * Peak RAM usage on inference is less than 2 GB.
 * Achieving a dice coefficient of over 0.7 overall for the unseen test dataset.
@@ -115,6 +124,10 @@ Splits are generated with random_state=42. Training the model should take on the
 The model can be trained by calling `train.py`, and indicating the directory of the dataset in `dataset.py`.
 All final trianing parameters and model parameters and contained in `train.py` and `modules.py`.
 
+The final CAN3D model was trained with 100 epochs using the Adam optimiser, a learning rate of 0.01, a batch size of 8 (Note: the batches were executing one sample at a time, and then summed, since the GPU has insufficient memory to store large batches), and Dice Squared loss weights of (0.03, 0.03, 0.6, 0.3, 8.0, 18.0) respectively, and Focal Loss Weights equal to three times that in each class.
+
+The final CAN2D model was trained on only 70 epochs, but with identical optimiser, loss, batch size, and learning rate.
+
 ## Examples and Plots
 The final model gave the following output predictions.
 
@@ -157,14 +170,14 @@ The 20% test split was not used while training and tuning models, so as to not b
 The core investigation of this project was to determine whether incorporating true 3D volumetric continuity would reduce or eliminate hazardous boundary and slice-transition errors compared to 2D models. I make a comparison between the CAN2D model (F. Yu, 2015), and the CAN3D model (W. Dai, 2021), which both use dilated convolutions to aggregate contextual information, but where the CAN3D model uses full 3D cnvolutions, while CAN2D operates slice-wise.
 
 ### Baseline Quantitative Comparison
-The final testing accuracy of the CAN3D and CAN2D model are displayed below for all classes. The prostate class is the most relevant to our investigation. Both models were trained on the same dataset using the same loss function, and compared on the same splits.
+The final testing accuracy of the CAN3D and CAN2D model are displayed below for all classes. The prostate class is the most relevant to our investigation. Both models were trained on the same dataset using the same loss function, and compared on the same splits. The CAN2D model was run on volumes by taking the slices by height, combining them into a batch, running the batch through the model, and then recombined into the final volume.
 
-| Model | Statistic | Background - 0 | Body - 1 | Bones - 2 | Bladder - 3 | Rectum - 4 | Prostate  - 5 (Target) |
-| ----- | --------- | ---------- | ---- | ----- | ------- | ------ | -------- |
-| CAN3D | Dice Coefficient | 0.9787 | 0.9668 | 0.8577 | 0.8227 | 0.7785 | 0.7792 |
-| | Intersection/Union | 0.9787| 0.9359 | 0.7515 | 0.7084 | 0.6484 | 0.6506 |
-| CAN2D | Dice Coefficient | 0.9330 | 0.8401 | 0.5464 | 0.3323 | 0.2536 | 0.3205 |
-| |Intersection/Union | 0.8748 | 0.7265 | 0.3847 | 0.2121 | 0.1537 | 0.2091 |
+| Model | Statistic | Background - 0 | Body - 1 | Bones - 2 | Bladder - 3 | Rectum - 4 | Prostate  - 5 (Target) | Average |
+| ----- | --------- | ---------- | ---- | ----- | ------- | ------ | -------- | -- |
+| CAN3D | Dice Coefficient | 0.9787 | 0.9668 | 0.8577 | 0.8227 | 0.7785 | 0.7792 | 0.8639 |
+| | Intersection/Union | 0.9787| 0.9359 | 0.7515 | 0.7084 | 0.6484 | 0.6506 | 0.7789 |
+| CAN2D | Dice Coefficient | 0.9330 | 0.8401 | 0.5464 | 0.3323 | 0.2536 | 0.3205 | 0.5377 |
+| |Intersection/Union | 0.8748 | 0.7265 | 0.3847 | 0.2121 | 0.1537 | 0.2091 | 0.4268 |
 
 We can see that the 3D model massively outperforms the CAN2D model on this problem. See also that CAN3D reached a Dice Coefficient greater than 0.7 across the board.
 
@@ -194,13 +207,65 @@ Depending on the implementation of CAN2D it is likely we could easily reduce the
 
 A more thorough investigation into the code might be required to determine why the CPU inference time is much worse than the CAN3D model. Speculatively, there are some reasons this might be:
 1) Because of overhead related to stacking and permuting the volume into a batch to make it fit the dimensions of the model.
-2) Because CAN2D only uses one downsampling step instead of 2.
+2) Because CAN2D only uses one downsampling step instead of two, which means that intermediate convolutions in the CAM module can take up to 4x the memory.
 
-### Errors
+### Error Case Analysis
+#### Extreme Slices
+To find error cases, I methodically picked random volumes, and then check slice-by-slice until I found slices with significant errors for CAN2D or CAN3D models. Below are some error cases I found.
+
+![Apex Error Case 1](apex_error_case_1.png)
+
+This slice was found as an apex slice (viewing near the top of the prostate), where we see a boundary error, where the model is predicting the prostate to be larger at this slice than it actually is, causing false positives around the prostate. We see interestingly, that the CAN2D model performs better in this case. In the following images, red highlights false positive predictions, while blue highlights false negative predictions.
+
+![Apex Error Case 2](apex_error_case_2.png)
+
+In this case, we see a massive false negative prediction in the CAN2D prediction near the apex slice. The CAN3D prediction is relatively accurate.
+
+![Base Error Case 3](base_error_case_3.png)
+
+This image is an error found near the base (lower slice) of the prostate. In this case, we see catastrophic false positives in the CAN3D model. 
+
+![Apex Error Case 4](apex_error_case_4.png)
+
+This image is an error around the apex of the prostate. We see that the models falsely predicted that the prostate is present at this depth (likely caused by confusion from the placement of the bladder, since the prostate sits below the bladder). The CAN3D model performs somewhat better, and the CAN2D model behaves extremely poorly.
 
 
+![Base Error Case 5](base_error_case_5.png)
 
-### Recommendations
+This image is an error around the base of the prostate. We again see that the model is falsely predicting that the prostate is present where it is not.
+
+#### Typical Middle Slice
+![Typical Middle Slice](typical_central_slice.png)
+
+This is a central slice taken from a typical patient (no enlarged prostate). We see false positives around the boundary of the prostate, with similar errors for both the 2D and 3D model, with the 3D model being negligibly better in this case.
+
+#### Error Autopsy Summary
+We see that the most catastrophic errors occur near the boundary of the prostate, as we usually expected. It does not seem that there is a clear advantage of the 3D model over the 2D model, since both models exhibit catastrphic failures in some cases. This is especially surprising, since the quantitative metrics for accuracy were much higher for the CAN3D model. 
+
+For the CAN3D model, in the cases above, we do not see any false-negatives. Most errors are false-positives, meaning that the model predicted the prostate to be in a location that it was not. This indicates that the usual mode of failure for the CAN3D model is to overestimate the area of the prostate, and bleed through the boundary, rather than underestimate the size.
+
+### Conclusions, Recommendations and Trade-Offs
+#### Summary
+Overall, there was a quantitative advantage for CAN3D compared to CAN2D, where the CAN3D model achieved a far greater Dice Coefficient and Intersection over Union score than the CAN2D model, despite using similar training parameters. Based on this implementation, there does not seem to be a major performance disadvantage for the CAN3D model, where both models took similar training time, inference time, and memory usage. For this implementation, CAN3D beats CAN2D overall on all performance metrics. However, from qualatative analysis, we found that the error conditions for the models are quite similar.
+
+My stated acceptance criteria for the models stated in the Feasibility report were:
+* Segmentation of the model visually shows reasonable gains on base and apex slices compared to the 2D baseline.
+* Runtime of inference occurs in under 2 seconds on a CPU.
+* Peak RAM usage on inference is less than 2 GB.
+* Achieving a dice coefficient of over 0.7 overall for the unseen test dataset.
+* Initial graphs of training epochs show steady progress, and training and test loss converge with minimal overfitting.
+
+The first three acceptance criteria are not satisfied. From the case analysis of the errors, we find that the CAN3D model has the same modes of error as CAN2D, namely, near the boundaries. Since inference takes more than 4 seconds for CAN3D on a cpu, and takes more than 6GB of memory, the second and third criteria are also not satisfied. 
+
+However, the last two criteria have been shown for the CAN3D model, where we see an overall Dice-coefficient of greater than 0.86, and a Dice-coefficient for the target class (prostate) of approximately 0.78.
+
+#### Recommendations and Trade-Offs
+There does not seem to be any significant negative trade-off for CAN3D for this implementation, since it performs superior to the CAN2D model, and infers faster, uses less memory, and trains in a similar amount of time. I recommend continuing to pursue true 3D techniques. I would recommend against using this model in a clinical setting without heavy huan oversight, since the CAN3D model does not fundementally solve the catestrophic errors of the 2D model.
+
+For future investigations, I would consider attempting different implementations of the CAN2D model which may use less memory, for example, by performing downsampling to reduce memory requirements in intermediate layers, or infering one slice at a time, and combining them at the end, rather than feeding the entire volume as a batch at once. The one-slice-at-a-time optimisation would be impossible in CAN3D, since it requires full access to the entire volume during inference. This would show more clearly the difference in memory use between the two models, which would create a clearer trade-off and potential advantage for CAN2D.
+
+In future, I would try performing more experiments involving comparing how the balance between Focal Loss and Dice Squared Loss effects boundary errors. Potentially incorporating a loss function which is more sensitive to false positives near the boundaries, and would correct for the bias of the models to overestimate rather than underestimate the prostate boundary.
+
 
 ## Journal and Personal Reflection
 Before getting the final CAN3D model, I attempted training using several different training methods, loss functions, and slight changes to the architecture. I also made several big mistakes while implementing this model and training that I had to correct before getting good results. I also made adaptations to improve performance for the final model. 
@@ -217,12 +282,14 @@ Before getting the final CAN3D model, I attempted training using several differe
 10) After adding image augmentation to training, I re-implemented the old kernel-stride-based downsampling, but used nearest-neighbour upsample layers with convolutions rather than TransposedConvolution layers. This massively improved training stability compared to previous models.
 11) Then, to produce the final model, I played with the number of channels of the upsampling layers, and increased the weighting of rarer classes in the loss function (specifically, Rectum and Prostate class weights were massively increased). I kept increasing the weights of prostate until I got the final model with Dice Coefficient > 0.7 across the board. I noticed that as I increased the weights for the prostate, as expected, the background and body dice-coefficients got worse (which is a trade-off induced by the loss function weights).
 
-I tested many other variations, but these were the main milestones I committed.
+I tested many other variations, but these were the main milestones.
 
 ## References
 W. Dai, S. Chandra, et al. “CAN3D: Fast 3D medical image segmentation via compact context aggregation”, 2021, https://doi.org/10.1016/j.media.2022.102562.
+
 Olaf Ronneberger, et al. "U-Net: Convolutional Networks for Biomedical Image Segmentation", 2015, https://doi.org/10.48550/arXiv.1505.04597
+
 F. Yu and V. Koltun, “Multi-scale context aggregation by dilated convolutions”, 2015, https://doi.org/10.48550/arXiv.1511.07122 
 
 ## Artificial Intelligence Usage Disclosure
-I have not used AI tools to help program or give ideas for any part of this project.
+I have not directly used AI tools to help program or give ideas for any part of this project. Coincidental use of AI through Google search may have helped in debugging errors and understanding library documentation.

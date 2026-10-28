@@ -148,8 +148,8 @@ def predict_2d():
     print("Test Scores: Dice: ", total_sum_dice, "IoU: ", total_sum_IoU)
 
 
-def make_figures():
-    images, labels = load_single_hipmri_image('R039_Week4', images_path='../data/images', labels_path='../data/semantic')
+def make_figures(sample = 'J005_Week2', figure_type='differences3d'):
+    images, labels = load_single_hipmri_image(sample, images_path='../data/images', labels_path='../data/semantic')
 
     print("Loading Models")
     # Load Models
@@ -167,34 +167,82 @@ def make_figures():
 
 
     print("Visualising...")
+    if figure_type == 'differences3d':
+        negative_cmap = plt.get_cmap('Blues').copy()
+        positive_cmap = plt.get_cmap('Reds').copy()
 
-    negative_cmap = plt.get_cmap('Blues').copy()
-    positive_cmap = plt.get_cmap('Reds').copy()
-
-    with torch.no_grad():
-        images = images.to(device)
-        labels = labels.to(device).long()
-        for i in range(0, 8):
-            height = 112 + i * 4
-            plt.subplot(1, 3, 1)
-            plt.imshow(images.cpu().numpy()[0, :, height, :])
-
-            plt.subplot(1, 3, 2)
-            plt.imshow(labels.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+        with torch.no_grad():
+            images = images.to(device)
+            labels = labels.to(device).long()
 
             output = model3d(images)
             predictions = torch.argmax(output, dim=1)
-            plt.subplot(1, 3, 3)
-            plt.imshow(predictions.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
-            false_positive = (predictions.cpu().numpy()[0, :, height, :] == 5) * (labels.cpu().numpy()[0, :, height, :] != 5)
-            masked = np.ma.masked_where(false_positive <= 0, false_positive)
-            plt.imshow(masked, cmap=positive_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
-            false_negative = (predictions.cpu().numpy()[0, :, height, :] != 5) * (labels.cpu().numpy()[0, :, height, :] == 5)
-            masked = np.ma.masked_where(false_negative <= 0, false_negative)
-            plt.imshow(masked, cmap=negative_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+            for i in range(0, 8):
+                height = 112 + i * 4
+                plt.subplot(1, 3, 1)
+                plt.imshow(images.cpu().numpy()[0, :, height, :])
 
-            plt.title("MRI slice (height = {})".format(height))
-            plt.show()
+                plt.subplot(1, 3, 2)
+                plt.imshow(labels.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+
+
+                plt.subplot(1, 3, 3)
+                plt.imshow(predictions.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+                false_positive = (predictions.cpu().numpy()[0, :, height, :] == 5) * (labels.cpu().numpy()[0, :, height, :] != 5)
+                masked = np.ma.masked_where(false_positive <= 0, false_positive)
+                plt.imshow(masked, cmap=positive_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+                false_negative = (predictions.cpu().numpy()[0, :, height, :] != 5) * (labels.cpu().numpy()[0, :, height, :] == 5)
+                masked = np.ma.masked_where(false_negative <= 0, false_negative)
+                plt.imshow(masked, cmap=negative_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+
+                plt.title("MRI slice (height = {})".format(height))
+                plt.show()
+
+    if figure_type == '2dvs3d':
+        negative_cmap = plt.get_cmap('Blues').copy()
+        positive_cmap = plt.get_cmap('Reds').copy()
+
+        with torch.no_grad():
+            images = images.to(device)
+            labels = labels.to(device).long()
+            output3d = model3d(images)
+            predictions3d = torch.argmax(output3d, dim=1)
+
+            output2d = batch_output_to_3d_volume_batch(model2d(volume_to_2d_batch(images[0])))
+            predictions2d = torch.argmax(output2d, dim=1)
+
+            for i in range(0, 12):
+                height = 100 + i * 4
+                plt.subplot(2, 2, 1)
+                plt.imshow(images.cpu().numpy()[0, :, height, :])
+                plt.title("Input")
+
+                plt.subplot(2, 2, 2)
+                plt.imshow(labels.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+                plt.title("True Labels")
+
+                
+                plt.subplot(2, 2, 3)
+                plt.imshow(predictions3d.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+                false_positive = (predictions3d.cpu().numpy()[0, :, height, :] == 5) * (labels.cpu().numpy()[0, :, height, :] != 5)
+                masked = np.ma.masked_where(false_positive <= 0, false_positive)
+                plt.imshow(masked, cmap=positive_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+                false_negative = (predictions3d.cpu().numpy()[0, :, height, :] != 5) * (labels.cpu().numpy()[0, :, height, :] == 5)
+                masked = np.ma.masked_where(false_negative <= 0, false_negative)
+                plt.imshow(masked, cmap=negative_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+                plt.title("CAN3D prediction")
+
+                
+                plt.subplot(2, 2, 4)
+                plt.imshow(predictions2d.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+                false_positive = (predictions2d.cpu().numpy()[0, :, height, :] == 5) * (labels.cpu().numpy()[0, :, height, :] != 5)
+                masked = np.ma.masked_where(false_positive <= 0, false_positive)
+                plt.imshow(masked, cmap=positive_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+                false_negative = (predictions2d.cpu().numpy()[0, :, height, :] != 5) * (labels.cpu().numpy()[0, :, height, :] == 5)
+                masked = np.ma.masked_where(false_negative <= 0, false_negative)
+                plt.imshow(masked, cmap=negative_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+                plt.title("CAN2D prediction")
+                plt.show()
 
 def perform_benchmark(which = '3d'):
     images, labels = load_single_hipmri_image('R039_Week4', images_path='../data/images', labels_path='../data/semantic')
@@ -249,4 +297,4 @@ def perform_benchmark(which = '3d'):
               , "Parameter Count: ", total_params)
 
 
-perform_benchmark('2d')
+make_figures('R039_Week6', '2dvs3d')
