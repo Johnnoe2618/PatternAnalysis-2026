@@ -297,4 +297,7 @@ def perform_benchmark(which = '3d'):
               , "Parameter Count: ", total_params)
 
 
-make_figures('R039_Week6', '2dvs3d')
+#predict_2d()
+#make_figures()
+#perform_benchmark()
+predict_3d()

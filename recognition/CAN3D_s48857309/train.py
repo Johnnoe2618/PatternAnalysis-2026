@@ -223,5 +223,5 @@ def train_2d():
     plt.title("Epochs vs Validation Score")
     plt.savefig("validation_curves_2d.png")
 
-train_2d()
-#train_3d()
+#train_2d()
+train_3d()

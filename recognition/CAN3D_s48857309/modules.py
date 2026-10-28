@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import math
 
 class AdaptiveInstanceNorm(nn.Module):
+    """Weighted combination of identity and instance norm function."""
     def __init__(self, channels):
         super().__init__()
         self.instancenorm = nn.InstanceNorm3d(channels)
@@ -64,6 +65,7 @@ class CAN3D(nn.Module):
         )
 
     def forward(self, x):
+        # Take no channels, and add 1
         x = x.view(x.shape[0], 1, self.depth, self.height, self.width)
         
         x = self.inlayer(x)
@@ -146,6 +148,7 @@ def compute_loss(predictions, labels, weights, alphas, gamma = 2):
     return compute_dsfl(predictions, labels, weights, alphas, gamma=gamma)
 
 def calculate_descrete_dsc(prediction_logits, label, smooth = 1e-6):
+    """Calculates the descrete Dice-Sorenson Coefficient for each class"""
     batch_size, num_classes = prediction_logits.shape[0], prediction_logits.shape[1]
     y_preds = torch.argmax(prediction_logits, dim=1)
     y_preds = nn.functional.one_hot(y_preds, num_classes).permute(0, 4, 1, 2, 3).view(batch_size, num_classes, -1)
@@ -159,6 +162,7 @@ def calculate_descrete_dsc(prediction_logits, label, smooth = 1e-6):
     return sum_dice_per_class, batch_size
 
 def calculate_intersection_over_union(prediction_logits, label, smooth = 1e-6):
+    """Calculates the intersection over union statistic for each class"""
     batch_size, num_classes = prediction_logits.shape[0], prediction_logits.shape[1]
     y_preds = torch.argmax(prediction_logits, dim=1)
     y_preds = nn.functional.one_hot(y_preds, num_classes).permute(0, 4, 1, 2, 3).view(batch_size, num_classes, -1)
