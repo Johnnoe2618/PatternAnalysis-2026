@@ -293,3 +293,9 @@ F. Yu and V. Koltun, â€œMulti-scale context aggregation by dilated convolutionsâ
 
 ## Artificial Intelligence Usage Disclosure
 I have not directly used AI tools to help program or give ideas for any part of this project. Coincidental use of AI through Google search may have helped in debugging errors and understanding library documentation.
+
+## Usage Instructions
+* `train.py` Call this file to train the model. Modify the bottom of the script to call `train_2d` or `train_3d` as desired.
+* `predict.py` Call this file to perform a number of different inference tasks. Call `predict_2d` or `predict_3d` to perform testing, and `make_figures` or `perform_benchmark` to produce visualisations and benchmarks.
+* `modules.py` Contains the model definitions, and loss functions used. Alter as desired.
+* `dataset.py` Contains functions for loading HIPMRI nifti database files. Can alter default path in here, or in `train.py`.
