@@ -102,34 +102,72 @@ A possible fallback if my planned experiment does not work, is to use the baseli
 
 
 ## Dependencies and Reproducibility
-Python: 3.11.17
-torch: 2.14.1, cuda enabled
-numpy: 2.4.6
-matplotlib: 3.11.2
-monai: 1.6.1
-nibabel: 5.4.2
-scikit-learn: 1.9.1
+Python: 3.11.17,
+torch: 2.14.1 (cuda enabled),
+numpy: 2.4.6,
+matplotlib: 3.11.2,
+monai: 1.6.1,
+nibabel: 5.4.2,
+scikit-learn: 1.9.1,
 tqdm: 4.70.1
 
-Splits are generated with random_state=42 to maintain reproducibility. 
+Splits are generated with random_state=42. Training the model should take on the order of 2 hours on a GPU. 
+The model can be trained by calling `train.py`, and indicating the directory of the dataset in `dataset.py`.
+All final trianing parameters and model parameters and contained in `train.py` and `modules.py`.
 
 ## Examples and Plots
+The final model gave the following output predictions.
 
+![3D prediction example](prediction_example_3d.png)
+
+In this diagram above, yellow indicates the prostate. The left-most image shows a particular slice of an MRI taken from a 3D volume. The middle shows the expert-labelled segmentation, and the right shows the CAN3D model segmentation. We can see that the models prediction has a few spots that are incorrectly classified as background which contribute to some of the noise of the prediction. We see that in this case, the prediction for the bone class is actually more realistic than the expert labelling, since we see in our model's prediction, a continuous bone region, while on the expert-classified segmentation, the upper left corner shows some artifacts.
+
+While training the model, we saw the validation loss curve below:
+
+![Validation curves](validation_curves.png)
+
+This plots the DSF loss on the left plot, and the Dice Coefficient for the prostate class on the right plot.
+
+We see that near the beginning, the loss was near zero, then around epoch 10, there was a massive increase, followed by a relatively quick plateau. The loss curve shows gradual decline, while the validation score seems to peak at around epoch 60, and declines negligibly after that.
+
+The final testing accuracy of the CAN3D and CAN2D model are displayed below for all classes. The prostate class is the most relevant to our investigation. Both models were trained on the same dataset using the same loss function, and compared on the same splits.
+
+| Model | Statistic | Background - 0 | Body - 1 | Bones - 2 | Bladder - 3 | Rectum - 4 | Prostate  - 5 (Target) |
+| ----- | --------- | ---------- | ---- | ----- | ------- | ------ | -------- |
+| CAN3D | Dice Coefficient | 0.9787 | 0.9668 | 0.8577 | 0.8227 | 0.7785 | 0.7792 |
+| | Intersection/Union | 0.9787| 0.9359 | 0.7515 | 0.7084 | 0.6484 | 0.6506 |
+| CAN2D | Dice Coefficient | 0.9330 | 0.8401 | 0.5464 | 0.3323 | 0.2536 | 0.3205 |
+| |Intersection/Union | 0.8748 | 0.7265 | 0.3847 | 0.2121 | 0.1537 | 0.2091 |
+
+
+We can see that the 3D model massively outperforms the CAN2D model on this problem. See also that CAN3D reached a Dice Coefficient greater than 0.7 across the board.
+
+Below I show a sequences of slices from the same volume, shows first the apex slice, middle slices, and base slice, as predicted by the CAN3D model. The right-most image shows false positives for the prostate class in red, and false negatives in blue.
+
+![Difference Image 1](difference_overlay_1.png)
+![Difference Image 2](difference_overlay_2.png)
+![Difference Image 3](difference_overlay_3.png)
+![Difference Image 4](difference_overlay_4.png)
+![Difference Image 5](difference_overlay_5.png)
+
+We see that all slices except for the base slice (the last image) show very good accuracy, where for the base slice, it makes many false positive predictions for the prostate.
 
 ## Pre-Processing
 The following pre-processing steps were taken during the training process:
 - Cropping every image to the same size 256x256x128. (Most images were unaltered)
 - Each image undergoes standardisation independently, so each image has the same range of values.
-- Augmentation with random elastic deformation from Monai, and random flipping along the bodies natural bilateral axis.
+- Augmentation with random elastic deformation using the Monai library, and random flipping along the body's natural bilateral axis. This was done to improve generalisation performance.
 
 During testing and model validation and evaluation, only cropping and standardisation was applied.
 
-I split the data into 3 splits, training, validation, and testing, with 70-10-20 percentages respectively. 
-Scikit-learn's GroupShuffleSplit was used to split on a patient-level, so that false-replication does not cause data leakage from these three sets. 
-A 20% split was chosen for testing to get a reasonably accurate, measure. Since the dataset has 211 samples, this means that approximately 40 samples are used for final model evaluation, which should give a reasonable estimate of the accuracy of the model. The final splits used end up with 122-25-64 samples respectively.
+The data was split into 3 sets, training, validation, and testing, with 70-10-20 percentages respectively. 
+Scikit-learn's GroupShuffleSplit was used to split on a patient-level, to avoid data-leakage.
+A 20% split was chosen for testing to get a reasonably accurate measure. Since the dataset has 211 samples, this means that roughly 40 samples are used for final model evaluation, which should give a reasonable estimate of the accuracy of the model. The final splits used end up with 122-25-64 samples respectively.
 The 20% test split was not used while training and tuning models, so as to not bias or overfit to it, and instead the 10% validation split was used consistently through the tuning and choice of the final model.
 
 ## Open Research Dilemma
+The core investigation of this project was to determine whether incorporating true 3D volumetric continuity would reduce or eliminate hazardous boundary and slice-transition errors compared to 2D models. I make a comparison between the CAN2D model (F. Yu, 2015), and the CAN3D model (W. Dai, 2021), which both use dilated convolutions to aggregate contextual information, but where the CAN3D model uses full 3D cnvolutions, while CAN2D operates slice-wise.
+
 ### Baseline Comparison
 ### Computational Efficiency
 ### Errors
