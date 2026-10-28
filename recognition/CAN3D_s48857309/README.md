@@ -24,7 +24,7 @@ Additionally, models can often achieve good average accuracy while having catest
 Core problems that need to be solved are:
 * Achieving good results on boundaries.
 * Achieving uniformly good results on all slice planes (including base and apex slices).
-* Near real-time efficiency on inference for GPU limitted systems.
+* Near real-time efficiency on inference for GPU limited systems.
 
 The purpose of the prototype is to see initial results on partially trained outputs to 
 see if further training will yields results worth the additional computaitonal expense, to see that
@@ -130,18 +130,6 @@ This plots the DSF loss on the left plot, and the Dice Coefficient for the prost
 
 We see that near the beginning, the loss was near zero, then around epoch 10, there was a massive increase, followed by a relatively quick plateau. The loss curve shows gradual decline, while the validation score seems to peak at around epoch 60, and declines negligibly after that.
 
-The final testing accuracy of the CAN3D and CAN2D model are displayed below for all classes. The prostate class is the most relevant to our investigation. Both models were trained on the same dataset using the same loss function, and compared on the same splits.
-
-| Model | Statistic | Background - 0 | Body - 1 | Bones - 2 | Bladder - 3 | Rectum - 4 | Prostate  - 5 (Target) |
-| ----- | --------- | ---------- | ---- | ----- | ------- | ------ | -------- |
-| CAN3D | Dice Coefficient | 0.9787 | 0.9668 | 0.8577 | 0.8227 | 0.7785 | 0.7792 |
-| | Intersection/Union | 0.9787| 0.9359 | 0.7515 | 0.7084 | 0.6484 | 0.6506 |
-| CAN2D | Dice Coefficient | 0.9330 | 0.8401 | 0.5464 | 0.3323 | 0.2536 | 0.3205 |
-| |Intersection/Union | 0.8748 | 0.7265 | 0.3847 | 0.2121 | 0.1537 | 0.2091 |
-
-
-We can see that the 3D model massively outperforms the CAN2D model on this problem. See also that CAN3D reached a Dice Coefficient greater than 0.7 across the board.
-
 Below I show a sequences of slices from the same volume, shows first the apex slice, middle slices, and base slice, as predicted by the CAN3D model. The right-most image shows false positives for the prostate class in red, and false negatives in blue.
 
 ![Difference Image 1](difference_overlay_1.png)
@@ -168,9 +156,50 @@ The 20% test split was not used while training and tuning models, so as to not b
 ## Open Research Dilemma
 The core investigation of this project was to determine whether incorporating true 3D volumetric continuity would reduce or eliminate hazardous boundary and slice-transition errors compared to 2D models. I make a comparison between the CAN2D model (F. Yu, 2015), and the CAN3D model (W. Dai, 2021), which both use dilated convolutions to aggregate contextual information, but where the CAN3D model uses full 3D cnvolutions, while CAN2D operates slice-wise.
 
-### Baseline Comparison
+### Baseline Quantitative Comparison
+The final testing accuracy of the CAN3D and CAN2D model are displayed below for all classes. The prostate class is the most relevant to our investigation. Both models were trained on the same dataset using the same loss function, and compared on the same splits.
+
+| Model | Statistic | Background - 0 | Body - 1 | Bones - 2 | Bladder - 3 | Rectum - 4 | Prostate  - 5 (Target) |
+| ----- | --------- | ---------- | ---- | ----- | ------- | ------ | -------- |
+| CAN3D | Dice Coefficient | 0.9787 | 0.9668 | 0.8577 | 0.8227 | 0.7785 | 0.7792 |
+| | Intersection/Union | 0.9787| 0.9359 | 0.7515 | 0.7084 | 0.6484 | 0.6506 |
+| CAN2D | Dice Coefficient | 0.9330 | 0.8401 | 0.5464 | 0.3323 | 0.2536 | 0.3205 |
+| |Intersection/Union | 0.8748 | 0.7265 | 0.3847 | 0.2121 | 0.1537 | 0.2091 |
+
+We can see that the 3D model massively outperforms the CAN2D model on this problem. See also that CAN3D reached a Dice Coefficient greater than 0.7 across the board.
+
+Below is the validation curve for the CAN2D model. Compared to the validation curve shown ealier for CAN3D, we see that it is much more unstable during training.
+
+![Validation curves 2D](validation_curves_2d.png)
+
 ### Computational Efficiency
+The following table provides the performance metrices comparing CAN3D and CAN2D. 
+
+| Model | Metric | Value |
+| ----- | ------ | ----- |
+| CAN3D | Parameter Count | 224654 |
+| | Training Time | 4729 (secs) |
+| | Inference Time (CPU) | 4.13 (secs) |
+| | Inference Time (GPU) | 0.35 (secs) |
+| | Peak Memory (GPU) | 6326MB |
+| CAN2D | Parameter Count | 135572 |
+| | Training Time | 3310 (secs) |
+| | Inference Time (CPU) | 15.23 (secs) |
+| | Inference Time (GPU) | 0.32 (secs) |
+| | Peak Memory (GPU) | 11166MB |
+
+We see that the CAN3D implementation overall has much better performance metrics. We see most significantly that the CAN2D model's memory use in on-par with CAN3D. This is due to teh differences in implementation, where the CAN3D model's architecture contains two strided kernel downsampling steps to reduce memory usage, while my implementation of CAN2D uses a single maxpool-based down-sample. The CAN3D model has a higher paremeter count, and infers in a smaller time on cpu than the CAN2D model. Their GPU inference times are nearly identical. 
+
+Depending on the implementation of CAN2D it is likely we could easily reduce the memory usage. In particular, my implementation computes the result by passing in all the slices as a large batch, while another implementation might only execute one batch at a time, and then stitch the results together at the end. 
+
+A more thorough investigation into the code might be required to determine why the CPU inference time is much worse than the CAN3D model. Speculatively, there are some reasons this might be:
+1) Because of overhead related to stacking and permuting the volume into a batch to make it fit the dimensions of the model.
+2) Because CAN2D only uses one downsampling step instead of 2.
+
 ### Errors
+
+
+
 ### Recommendations
 
 ## Journal and Personal Reflection

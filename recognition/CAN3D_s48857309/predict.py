@@ -196,4 +196,57 @@ def make_figures():
             plt.title("MRI slice (height = {})".format(height))
             plt.show()
 
-make_figures()
+def perform_benchmark(which = '3d'):
+    images, labels = load_single_hipmri_image('R039_Week4', images_path='../data/images', labels_path='../data/semantic')
+    images = images.to(device)
+
+    print("Loading Models")
+    if which == '3d':
+        print("Testing 3D")
+        model3d = CAN3D()
+        model3d = model3d.to(device)
+        state_dict = torch.load('final_parameters_3d.pth', weights_only=True, map_location=device)
+        model3d.load_state_dict(state_dict)
+        model3d.eval()
+
+        if device.type == 'cuda':
+            torch.cuda.reset_peak_memory_stats(device=device)
+
+        start = time.time()
+        output = model3d(images).cpu()
+        end = time.time()
+        total_params = sum(p.numel() for p in model3d.parameters())
+
+        peak_memory_usage = 'N/A'
+        if device.type == 'cuda':
+            peak_memory_usage = torch.cuda.max_memory_allocated(device=device)
+
+        print("Inference time: ", end - start
+              , "Peak Usage: ", peak_memory_usage
+              , "Parameter Count: ", total_params)
+
+    else:
+        print("Testing 2D")
+        model2d = CAN2D()
+        model2d = model2d.to(device)
+        state_dict = torch.load('final_parameters_2d.pth', weights_only=True, map_location=device)
+        model2d.load_state_dict(state_dict)
+        model2d.eval()
+        if device.type == 'cuda':
+            torch.cuda.reset_peak_memory_stats(device=device)
+
+        start = time.time()
+        output = batch_output_to_3d_volume_batch(model2d(volume_to_2d_batch(images[0]))).cpu()
+        end = time.time()
+        total_params = sum(p.numel() for p in model2d.parameters())
+
+        peak_memory_usage = 'N/A'
+        if device.type == 'cuda':
+            peak_memory_usage = torch.cuda.max_memory_allocated(device=device)
+
+        print("Inference time: ", end - start
+              , "Peak Usage: ", peak_memory_usage
+              , "Parameter Count: ", total_params)
+
+
+perform_benchmark('2d')
