@@ -131,10 +131,10 @@ def train_2d():
     # Hyper Parameters
     batch_size = 8
     learning_rate = 0.01
-    num_epochs = 50
+    num_epochs = 70
 
     # Create Database
-    database = HipMRI3D(early_stop=30)
+    database = HipMRI3D(early_stop=0)
     train_set, val_set, test_set = get_training_test_split(database, test_size=0.2, val_size=0.1)
     train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=1, shuffle=False)

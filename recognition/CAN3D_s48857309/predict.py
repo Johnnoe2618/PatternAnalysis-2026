@@ -1,25 +1,24 @@
-from dataset import HipMRI3D, get_training_test_split
+from dataset import HipMRI3D, get_training_test_split, load_single_hipmri_image
 from modules import CAN3D, CAN2D, compute_loss, calculate_descrete_dsc, calculate_intersection_over_union
 import torch
 import time
 import matplotlib.pyplot as plt
-import monai.transforms as mt
+import numpy as np
 
 from torch.utils.data import DataLoader
-
-
-# Create Database
-database = HipMRI3D(early_stop=0)
-train_set, val_set, test_set = get_training_test_split(database, test_size=0.2, val_size=0.1)
-train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
-val_loader = DataLoader(val_set, batch_size=1, shuffle=False)
-test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 
 # Select Device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device: ", device)
 
 def predict_3d():
+    # Create Database
+    database = HipMRI3D(early_stop=5)
+    train_set, val_set, test_set = get_training_test_split(database, test_size=0.2, val_size=0.1)
+    train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
+
     # Load Models
     model = CAN3D()
     model = model.to(device)
@@ -85,6 +84,13 @@ def batch_output_to_3d_volume_batch(batch : torch.Tensor):
     return batch.permute(1, 2, 0, 3)[None,:,:,:,:]
 
 def predict_2d():
+    # Create Database
+    database = HipMRI3D(early_stop=5)
+    train_set, val_set, test_set = get_training_test_split(database, test_size=0.2, val_size=0.1)
+    train_loader = DataLoader(train_set, batch_size=1, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
+
     # Load Models
     model = CAN2D()
     model = model.to(device)
@@ -100,19 +106,15 @@ def predict_2d():
         images = images.to(device)
         labels = labels.to(device).long()
 
-        plt.subplot(2, 2, 1)
+        plt.subplot(1, 3, 1)
         plt.imshow(images.cpu().numpy()[0, :, 128, :])
 
-        plt.subplot(2, 2, 2)
+        plt.subplot(1, 3, 2)
         plt.imshow(labels.cpu().numpy()[0, :, 128, :])
 
         output = batch_output_to_3d_volume_batch(model(volume_to_2d_batch(images[0])))
         predictions = torch.argmax(output, dim=1)
-
-        plt.subplot(2, 2, 3)
-        plt.imshow(output.cpu().numpy()[0, 1, :, 128, :])
-
-        plt.subplot(2, 2, 4)
+        plt.subplot(1, 3, 3)
         plt.imshow(predictions.cpu().numpy()[0, :, 128, :])
 
     plt.savefig("prediction_example_2d.png")
@@ -145,4 +147,53 @@ def predict_2d():
 
     print("Test Scores: Dice: ", total_sum_dice, "IoU: ", total_sum_IoU)
 
-predict_3d()
+
+def make_figures():
+    images, labels = load_single_hipmri_image('R039_Week4', images_path='../data/images', labels_path='../data/semantic')
+
+    print("Loading Models")
+    # Load Models
+    model3d = CAN3D()
+    model3d = model3d.to(device)
+    state_dict = torch.load('final_parameters_3d.pth', weights_only=True, map_location=device)
+    model3d.load_state_dict(state_dict)
+    model3d.eval()
+
+    model2d = CAN2D()
+    model2d = model2d.to(device)
+    state_dict = torch.load('final_parameters_2d.pth', weights_only=True, map_location=device)
+    model2d.load_state_dict(state_dict)
+    model2d.eval()
+
+
+    print("Visualising...")
+
+    negative_cmap = plt.get_cmap('Blues').copy()
+    positive_cmap = plt.get_cmap('Reds').copy()
+
+    with torch.no_grad():
+        images = images.to(device)
+        labels = labels.to(device).long()
+        for i in range(0, 8):
+            height = 112 + i * 4
+            plt.subplot(1, 3, 1)
+            plt.imshow(images.cpu().numpy()[0, :, height, :])
+
+            plt.subplot(1, 3, 2)
+            plt.imshow(labels.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+
+            output = model3d(images)
+            predictions = torch.argmax(output, dim=1)
+            plt.subplot(1, 3, 3)
+            plt.imshow(predictions.cpu().numpy()[0, :, height, :], vmin =0, vmax=5)
+            false_positive = (predictions.cpu().numpy()[0, :, height, :] == 5) * (labels.cpu().numpy()[0, :, height, :] != 5)
+            masked = np.ma.masked_where(false_positive <= 0, false_positive)
+            plt.imshow(masked, cmap=positive_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+            false_negative = (predictions.cpu().numpy()[0, :, height, :] != 5) * (labels.cpu().numpy()[0, :, height, :] == 5)
+            masked = np.ma.masked_where(false_negative <= 0, false_negative)
+            plt.imshow(masked, cmap=negative_cmap, alpha=1.0, vmin=0.1, vmax=1.5)
+
+            plt.title("MRI slice (height = {})".format(height))
+            plt.show()
+
+make_figures()

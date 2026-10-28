@@ -16,7 +16,8 @@ from sklearn.model_selection import GroupShuffleSplit
 def load_data_3D(
     imageNames,
     normImage=False,
-    dtype=np.float32
+    dtype=np.float32,
+    dimension=None
 ):
     """
     Load medical image data from names, cases list provided into a list for
@@ -28,15 +29,19 @@ def load_data_3D(
     normImage : bool ( normalise the image 0.0-1.0)
     dtype : Type of the data . If dtype =np.uint8 , it is assumed that the data
     is labels
+    dimension : use None to infer, else specify (rows, cols, depth)
     """
 
     # get fixed size
     num = len(imageNames)
-    niftiImage = nib.load(imageNames[0])
-    first_case = niftiImage.get_fdata(caching="unchanged")
-    if len(first_case.shape) == 4:
-        first_case = first_case[:, :, :, 0]  # sometimes extra dims , remove
-    rows, cols, depth = first_case.shape
+    if dimension is None:
+        niftiImage = nib.load(imageNames[0])
+        first_case = niftiImage.get_fdata(caching="unchanged")
+        if len(first_case.shape) == 4:
+            first_case = first_case[:, :, :, 0]  # sometimes extra dims , remove
+        rows, cols, depth = first_case.shape
+    else:
+        rows, cols, depth = dimension
     images = np.zeros((num, rows, cols, depth), dtype=dtype)
 
     for i, inName in enumerate(tqdm(imageNames)):
@@ -114,6 +119,21 @@ class HipMRI3D(Dataset):
 
     def __getitems__(self, idxs):
         return self.images[idxs], self.labels[idxs]
+
+def load_single_hipmri_image(
+        sample='B006_Week0', 
+        images_path='/home/groups/comp3710/HipMRI_Study_open/semantic_MRs', 
+        labels_path='/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only', 
+        dimension=(256, 256, 128)):
+    image_dir = Path(images_path)
+    labels_dir = Path(labels_path)
+    image_paths = [(image_dir / "{}_LFOV".format(sample)).with_suffix(".nii.gz")]
+    label_paths = [(labels_dir / "{}_SEMANTIC".format(sample)).with_suffix(".nii.gz")]
+
+    images = load_data_3D(image_paths, True, np.float32, dimension=dimension)
+    labels = load_data_3D(label_paths, False, np.uint8, dimension=dimension)
+    return torch.tensor(images), torch.tensor(labels)
+
 
 def get_training_test_split(dataset: HipMRI3D, test_size=0.2, val_size=0.1):
     # Split into training/validation and test set
